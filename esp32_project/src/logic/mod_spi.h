@@ -1,27 +1,31 @@
 /**
  * @file mod_spi.h
- * @brief SPI Shared Bus module — consumer registration API.
+ * @brief SPI bus module — consumer registration and dual-module API.
  *
- * The SPI_SHARED module manages the sensor SPI bus (SPI2_HOST / SENS_SPI_BUS).
- * It auto-switches between two modes based on active consumer count:
+ * Two infrastructure modules manage the sensor SPI bus:
  *
- *   DIRECT mode (1 consumer):
+ *   SPI (single-consumer / DIRECT mode):
+ *     - Bus initialized with first consumer's settings
  *     - No mutex, no multi-client CS arbitration
- *     - SPI bus stays configured with the single consumer's settings
  *     - Minimal overhead per transaction
+ *     - Active whenever ≥1 SPI device needs the bus
  *
- *   SHARED mode (2+ consumers):
- *     - FreeRTOS mutex for bus arbitration
- *     - All CS pins deasserted before each transaction
+ *   SPI_SHARED (multi-client / SHARED mode):
+ *     - Depends on SPI module (requires bus to be initialized)
+ *     - Enables FreeRTOS mutex + all-CS deassert per transaction
  *     - beginTransaction/endTransaction per device (different modes/frequencies)
  *     - Full telemetry and client-switch tracking
+ *     - Active only when ≥2 SPI devices need the bus simultaneously
  *
- * SPI consumers (IMU, WAS, ACTUATOR) must call:
- *   spi_shared_add_consumer(ModuleId::XXX)    in their activate()
- *   spi_shared_remove_consumer(ModuleId::XXX) in their deactivate()
+ * SPI consumers (IMU, WAS, ACTUATOR) call:
+ *   spi_add_consumer(ModuleId::XXX)    in their activate()
+ *   spi_remove_consumer(ModuleId::XXX) in their deactivate()
  *
- * The module is auto-managed — it cannot be manually activated/deactivated
- * via CLI. It appears in `module list` and `module show SPI_SHARED`.
+ * The consumer API auto-manages both modules:
+ *   0→1 consumers: activate SPI
+ *   1→2 consumers: activate SPI_SHARED
+ *   2→1 consumers: deactivate SPI_SHARED
+ *   1→0 consumers: deactivate SPI
  */
 
 #pragma once
@@ -37,41 +41,38 @@ extern "C" {
 // ===================================================================
 
 /// Register a module as SPI bus consumer.
-/// - 1st consumer: initializes bus in DIRECT mode
-/// - 2nd+ consumer: transitions to SHARED mode
-/// Safe to call if already registered (idempotent).
-void spi_shared_add_consumer(ModuleId id);
+/// 1st consumer → activates SPI module (DIRECT mode)
+/// 2nd+ consumer → activates SPI_SHARED module (SHARED mode)
+/// Idempotent: safe to call if already registered.
+void spi_add_consumer(ModuleId id);
 
 /// Unregister a module as SPI bus consumer.
-/// - If going from 2→1: transitions back to DIRECT mode
-/// - If going from 1→0: deinitializes SPI bus completely
-/// Safe to call if not registered (no-op).
-void spi_shared_remove_consumer(ModuleId id);
+/// 2→1 consumers → deactivates SPI_SHARED (back to DIRECT)
+/// 1→0 consumers → deactivates SPI (bus deinit)
+/// Idempotent: safe to call if not registered.
+void spi_remove_consumer(ModuleId id);
 
 // ===================================================================
 // State Queries
 // ===================================================================
 
 /// Number of currently registered SPI consumers (0-3).
-uint8_t spi_shared_consumer_count(void);
+uint8_t spi_consumer_count(void);
 
 /// Whether the SPI bus is currently initialized.
-bool spi_shared_is_initialized(void);
+bool spi_is_initialized(void);
 
 /// Whether the bus is in DIRECT (single-consumer) mode.
-/// Returns false if SHARED mode or bus not initialized.
-bool spi_shared_is_direct_mode(void);
+bool spi_is_direct_mode(void);
 
-/// Whether the bus is in SHARED (multi-consumer) mode.
-bool spi_shared_is_shared_mode(void);
-
-/// Get the name of the sole consumer in DIRECT mode, or nullptr.
-const char* spi_shared_direct_consumer_name(void);
+/// Whether the bus is in SHARED (multi-client) mode.
+bool spi_is_shared_mode(void);
 
 #ifdef __cplusplus
 }
 
-// Module ops table (for module_system.cpp registration)
+// Module ops tables (for module_system.cpp registration)
+extern const ModuleOps2 mod_spi_ops;
 extern const ModuleOps2 mod_spi_shared_ops;
 
 #endif

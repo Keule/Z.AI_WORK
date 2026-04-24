@@ -50,7 +50,7 @@ static bool mod_imu_is_enabled(void) {
 static void mod_imu_activate(void) {
     s_state = {};
     // Register as SPI consumer BEFORE using SPI bus
-    spi_shared_add_consumer(ModuleId::IMU);
+    spi_add_consumer(ModuleId::IMU);
     hal_imu_begin();
     s_state.detected = hal_imu_detect();
     if (s_state.detected) {
@@ -63,7 +63,7 @@ static void mod_imu_activate(void) {
 
 static void mod_imu_deactivate(void) {
     // Unregister from SPI bus (may trigger mode switch or bus deinit)
-    spi_shared_remove_consumer(ModuleId::IMU);
+    spi_remove_consumer(ModuleId::IMU);
     s_state = {};
     LOGI("IMU", "deactivated");
 }

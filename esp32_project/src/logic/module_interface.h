@@ -31,7 +31,8 @@ enum class ModuleId : uint8_t {
     STEER,          ///< Logic: PID Controller
     LOGGING,        ///< Service: SD-Card Logger
     OTA,            ///< Service: OTA Update
-    SPI_SHARED,     ///< Infrastructure: shared SPI bus (auto direct/shared mode)
+    SPI,            ///< Infrastructure: sensor SPI bus (single-consumer, no mutex)
+    SPI_SHARED,     ///< Infrastructure: multi-client SPI arbitration (mutex + CS)
     COUNT           ///< Sentinel — NOT a real module
 };
 

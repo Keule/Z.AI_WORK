@@ -182,8 +182,8 @@ void hal_esp32_init_all(void) {
     }
     hal_esp32_common_boot_init();
 
-    // NOTE: sensor SPI bus is now managed by the SPI_SHARED module.
-    // The module system calls spi_shared_add_consumer() during module
+    // NOTE: sensor SPI bus is now managed by SPI + SPI_SHARED modules.
+    // The module system calls spi_add_consumer() during module
     // activation, which triggers hal_sensor_spi_init() on first consumer.
     // Pin setup for devices is done by hal_xxx_begin() (called both here
     // and in module activate — idempotent).
