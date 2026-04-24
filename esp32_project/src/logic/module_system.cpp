@@ -1,0 +1,327 @@
+/**
+ * @file module_system.cpp
+ * @brief Central module system implementation — ADR-MODULE-002.
+ *
+ * Manages the module registry, dependency resolution, pipeline execution,
+ * and operating mode transitions.
+ */
+
+#include "module_interface.h"
+#include "hal/hal.h"
+
+#include "log_config.h"
+#define LOG_LOCAL_LEVEL LOG_LEVEL_MOD
+#include "esp_log.h"
+#include "log_ext.h"
+
+#include <cstring>
+
+// ===================================================================
+// Forward declarations — all module ops tables
+// ===================================================================
+extern const ModuleOps2 mod_eth_ops;
+extern const ModuleOps2 mod_wifi_ops;
+extern const ModuleOps2 mod_bt_ops;
+extern const ModuleOps2 mod_network_ops;
+extern const ModuleOps2 mod_gnss_ops;
+extern const ModuleOps2 mod_ntrip_ops;
+extern const ModuleOps2 mod_imu_ops;
+extern const ModuleOps2 mod_was_ops;
+extern const ModuleOps2 mod_actuator_ops;
+extern const ModuleOps2 mod_safety_ops;
+extern const ModuleOps2 mod_steer_ops;
+extern const ModuleOps2 mod_logging_ops;
+extern const ModuleOps2 mod_ota_ops;
+
+// ===================================================================
+// Module registry — static array indexed by ModuleId
+// ===================================================================
+static ModuleRuntime s_modules[static_cast<size_t>(ModuleId::COUNT)] = {};
+
+/// Module ops table — MUST match ModuleId order exactly.
+static const ModuleOps2* const s_ops_table[] = {
+    &mod_eth_ops,         // ETH
+    &mod_wifi_ops,        // WIFI
+    &mod_bt_ops,          // BT
+    &mod_network_ops,     // NETWORK
+    &mod_gnss_ops,        // GNSS
+    &mod_ntrip_ops,       // NTRIP
+    &mod_imu_ops,         // IMU
+    &mod_was_ops,         // WAS
+    &mod_actuator_ops,    // ACTUATOR
+    &mod_safety_ops,      // SAFETY
+    &mod_steer_ops,       // STEER
+    &mod_logging_ops,     // LOGGING
+    &mod_ota_ops,         // OTA
+};
+static constexpr size_t kModuleCount = sizeof(s_ops_table) / sizeof(s_ops_table[0]);
+
+// ===================================================================
+// Default freshness timeouts per module (milliseconds)
+// ===================================================================
+static constexpr uint32_t kDefaultFreshness[] = {
+    5000,   // ETH
+    5000,   // WIFI
+    5000,   // BT
+    1000,   // NETWORK
+    2000,   // GNSS
+    10000,  // NTRIP
+    500,    // IMU
+    300,    // WAS
+    1000,   // ACTUATOR
+    500,    // SAFETY
+    500,    // STEER
+    5000,   // LOGGING
+    10000,  // OTA
+};
+
+// ===================================================================
+// Mode management
+// ===================================================================
+static OpMode s_op_mode = OpMode::CONFIG;
+
+// ===================================================================
+// Helper: get human-readable module name
+// ===================================================================
+const char* moduleIdToName(ModuleId id) {
+    if (id >= ModuleId::COUNT) return "???";
+    return s_ops_table[static_cast<size_t>(id)]->name;
+}
+
+ModuleId moduleIdFromName(const char* name) {
+    if (!name) return ModuleId::COUNT;
+    for (size_t i = 0; i < kModuleCount; i++) {
+        if (std::strcmp(name, s_ops_table[i]->name) == 0) {
+            return static_cast<ModuleId>(i);
+        }
+    }
+    return ModuleId::COUNT;
+}
+
+// ===================================================================
+// Dependency checking
+// ===================================================================
+/// Check if all dependencies of a module are active.
+/// Returns true if all deps are satisfied.
+static bool checkDeps(const ModuleOps2* ops) {
+    if (!ops->deps) return true;  // no dependencies
+    for (size_t i = 0; ops->deps[i] != ModuleId::COUNT; i++) {
+        ModuleId dep = ops->deps[i];
+        if (dep >= ModuleId::COUNT) continue;
+        if (!s_modules[static_cast<size_t>(dep)].active) {
+            hal_log("MOD-SYS: %s: dependency %s not active",
+                    ops->name, moduleIdToName(dep));
+            return false;
+        }
+    }
+    return true;
+}
+
+// ===================================================================
+// API Implementation
+// ===================================================================
+
+void moduleSysInit(void) {
+    s_op_mode = OpMode::CONFIG;
+
+    for (size_t i = 0; i < kModuleCount; i++) {
+        s_modules[i].ops = s_ops_table[i];
+        s_modules[i].active = false;
+        s_modules[i].state = {};
+        s_modules[i].freshness_timeout_ms = kDefaultFreshness[i];
+    }
+
+    hal_log("MOD-SYS: initialised (%u modules)", (unsigned)kModuleCount);
+}
+
+ModuleRuntime* moduleSysGet(ModuleId id) {
+    if (id >= ModuleId::COUNT) return nullptr;
+    return &s_modules[static_cast<size_t>(id)];
+}
+
+const ModuleOps2* moduleSysOps(ModuleId id) {
+    if (id >= ModuleId::COUNT) return nullptr;
+    return s_ops_table[static_cast<size_t>(id)];
+}
+
+bool moduleSysIsActive(ModuleId id) {
+    const auto* m = moduleSysGet(id);
+    return m ? m->active : false;
+}
+
+bool moduleSysActivate(ModuleId id) {
+    auto* m = moduleSysGet(id);
+    if (!m) return false;
+    if (m->active) return true;  // idempotent
+
+    const ModuleOps2* ops = m->ops;
+    if (!ops->is_enabled || !ops->is_enabled()) {
+        hal_log("MOD-SYS: %s: not compiled in, cannot activate", ops->name);
+        return false;
+    }
+
+    // Check dependencies
+    if (!checkDeps(ops)) {
+        hal_log("MOD-SYS: %s: activation rejected (missing dependencies)", ops->name);
+        return false;
+    }
+
+    // Activate
+    if (ops->activate) ops->activate();
+    m->active = true;
+    m->state.detected = true;
+    m->state.error_code = 0;
+    hal_log("MOD-SYS: %s -> ON", ops->name);
+    return true;
+}
+
+bool moduleSysDeactivate(ModuleId id) {
+    auto* m = moduleSysGet(id);
+    if (!m) return false;
+    if (!m->active) return true;  // idempotent
+
+    const ModuleOps2* ops = m->ops;
+    if (ops->deactivate) ops->deactivate();
+    m->active = false;
+    m->state = {};
+    hal_log("MOD-SYS: %s -> OFF", ops->name);
+    return true;
+}
+
+bool moduleSysIsHealthy(ModuleId id, uint32_t now_ms) {
+    const auto* m = moduleSysGet(id);
+    if (!m) return false;
+    if (!m->active) return false;
+
+    const ModuleOps2* ops = m->ops;
+    if (ops->is_healthy) return ops->is_healthy(now_ms);
+
+    // Fallback: use internal ModState
+    const ModState& s = m->state;
+    if (!s.detected) return false;
+    if (!s.quality_ok) return false;
+    if (s.error_code != 0) return false;
+    if ((now_ms - s.last_update_ms) > m->freshness_timeout_ms) return false;
+    return true;
+}
+
+// ===================================================================
+// Pipeline execution
+// ===================================================================
+
+void moduleSysRunInput(uint32_t now_ms) {
+    for (size_t i = 0; i < kModuleCount; i++) {
+        if (!s_modules[i].active) continue;
+        const ModuleOps2* ops = s_modules[i].ops;
+        if (ops->input) {
+            ModuleResult r = ops->input(now_ms);
+            if (r.success) {
+                s_modules[i].state.last_update_ms = now_ms;
+            }
+        }
+    }
+}
+
+void moduleSysRunProcess(uint32_t now_ms) {
+    (void)now_ms;
+    for (size_t i = 0; i < kModuleCount; i++) {
+        if (!s_modules[i].active) continue;
+        const ModuleOps2* ops = s_modules[i].ops;
+        if (ops->process) {
+            ops->process(now_ms);
+        }
+    }
+}
+
+void moduleSysRunOutput(uint32_t now_ms) {
+    (void)now_ms;
+    for (size_t i = 0; i < kModuleCount; i++) {
+        if (!s_modules[i].active) continue;
+        const ModuleOps2* ops = s_modules[i].ops;
+        if (ops->output) {
+            ops->output(now_ms);
+        }
+    }
+}
+
+// ===================================================================
+// Boot activation
+// ===================================================================
+void moduleSysBootActivate(void) {
+    hal_log("MOD-SYS: === Boot Activation ===");
+
+    // Transport layer first
+    moduleSysActivate(ModuleId::ETH);
+
+    // Sensors (no deps)
+    moduleSysActivate(ModuleId::IMU);
+    moduleSysActivate(ModuleId::WAS);
+    moduleSysActivate(ModuleId::GNSS);
+    moduleSysActivate(ModuleId::SAFETY);
+
+    // Actuator (depends on IMU + WAS)
+    moduleSysActivate(ModuleId::ACTUATOR);
+
+    // Protocol (depends on ETH or WIFI)
+    moduleSysActivate(ModuleId::NETWORK);
+
+    // Services
+    moduleSysActivate(ModuleId::NTRIP);
+    moduleSysActivate(ModuleId::LOGGING);
+    moduleSysActivate(ModuleId::OTA);
+
+    // Steer last (depends on IMU + WAS + ACTUATOR + SAFETY)
+    moduleSysActivate(ModuleId::STEER);
+
+    // WiFi/BT: only if ETH is not connected (fallback)
+    if (!hal_net_is_connected()) {
+        moduleSysActivate(ModuleId::WIFI);
+        moduleSysActivate(ModuleId::BT);
+    }
+
+    hal_log("MOD-SYS: === Boot Activation Complete ===");
+}
+
+// ===================================================================
+// Mode management
+// ===================================================================
+
+OpMode modeGet(void) {
+    return s_op_mode;
+}
+
+bool modeSet(OpMode target) {
+    if (target == s_op_mode) return false;
+
+    if (target == OpMode::WORK) {
+        // Check steer pipeline readiness
+        bool steer_ok = moduleSysIsActive(ModuleId::IMU) &&
+                        moduleSysIsActive(ModuleId::WAS) &&
+                        moduleSysIsActive(ModuleId::ACTUATOR) &&
+                        moduleSysIsActive(ModuleId::SAFETY) &&
+                        moduleSysIsActive(ModuleId::STEER);
+        if (!steer_ok) {
+            hal_log("MODE: CONFIG -> WORK rejected: steer pipeline incomplete");
+            return false;
+        }
+        s_op_mode = OpMode::WORK;
+        hal_log("MODE: CONFIG -> WORK");
+        return true;
+    }
+
+    if (target == OpMode::CONFIG) {
+        s_op_mode = OpMode::CONFIG;
+        hal_log("MODE: WORK -> CONFIG");
+        return true;
+    }
+
+    return false;
+}
+
+const char* modeToString(OpMode mode) {
+    switch (mode) {
+        case OpMode::CONFIG: return "CONFIG";
+        case OpMode::WORK:   return "WORK";
+        default: return "?";
+    }
+}

@@ -1,117 +1,276 @@
 /**
  * @file cmd_module.cpp
- * @brief CLI module command — list, enable, disable, pins.
+ * @brief Generic module CLI — ADR-MODULE-002.
  *
- * Split from cli.cpp (Step 7).
+ * Single CLI handler for ALL modules via the ModuleOps2 registry.
+ * Replaces all modulspezifischen cmd_*.cpp handlers.
+ *
+ * Commands:
+ *   module list                     List all modules + status
+ *   module <name> show              State + health + config
+ *   module <name> set <key> <val>   Set config value (RAM)
+ *   module <name> load              Load from NVS
+ *   module <name> apply             Apply config (re-init)
+ *   module <name> save              Save to NVS
+ *   module <name> activate          Activate (dep-check + pin-claim)
+ *   module <name> deactivate        Deactivate (release resources)
+ *   module <name> debug             Lifecycle test
+ *   mode config | work              Switch operating mode
  */
 
 #include "cli.h"
-#include "modules.h"
+#include "module_interface.h"
+#include "hal/hal.h"
 
 #include <cstdio>
 #include <cstring>
 
 extern Stream* s_cli_out;
 
-namespace {
+// ===================================================================
+// Helpers
+// ===================================================================
 
-const char* modStateToStr(ModState s) {
-    switch (s) {
-        case MOD_UNAVAILABLE: return "UNAVAILABLE";
-        case MOD_OFF: return "OFF";
-        case MOD_ON: return "ON";
-        default: return "?";
+static void printModuleStatus(ModuleId id) {
+    const auto* rt = moduleSysGet(id);
+    if (!rt) return;
+    const auto* ops = rt->ops;
+    const char* active = rt->active ? "ON " : "OFF";
+    const char* enabled = (ops->is_enabled && ops->is_enabled()) ? "Y" : "N";
+    const bool healthy = moduleSysIsHealthy(id, hal_millis());
+    const char* health = rt->active ? (healthy ? "OK " : "ERR") : "-- ";
+    const char* det = rt->state.detected ? "Y" : "N";
+    const char* qual = rt->state.quality_ok ? "Y" : "N";
+    const char* err = rt->state.error_code == 0 ? "0" : "?";
+
+    s_cli_out->printf("  %-10s %s enabled=%s det=%s q=%s err=%s healthy=%s\n",
+                      ops->name, active, enabled, det, qual, err, health);
+}
+
+// ===================================================================
+// module list
+// ===================================================================
+static void cliModuleList(void) {
+    s_cli_out->printf("Mode: %s\n", modeToString(modeGet()));
+    s_cli_out->println("Module Status:");
+    for (int i = 0; i < static_cast<int>(ModuleId::COUNT); i++) {
+        printModuleStatus(static_cast<ModuleId>(i));
     }
 }
 
-bool parseModuleName(const char* name, FirmwareFeatureId* out_id) {
-    if (!name || !out_id) return false;
-    struct Entry { const char* name; FirmwareFeatureId id; };
-    static const Entry kEntries[] = {
-        {"imu", MOD_IMU}, {"ads", MOD_ADS}, {"act", MOD_ACT}, {"eth", MOD_ETH},
-        {"gnss", MOD_GNSS}, {"ntrip", MOD_NTRIP}, {"safety", MOD_SAFETY},
-        {"logsw", MOD_LOGSW}, {"sd", MOD_SD},
-    };
-    for (const auto& e : kEntries) {
-        if (std::strcmp(name, e.name) == 0) {
-            *out_id = e.id;
-            return true;
-        }
-    }
-    return false;
-}
-
-void cliCmdModule(int argc, char** argv) {
-    if (argc < 2) {
-        s_cli_out->println("usage: module <list|enable|disable|pins> [name]");
+// ===================================================================
+// module <name> show
+// ===================================================================
+static void cliModuleShow(const char* name) {
+    ModuleId id = moduleIdFromName(name);
+    if (id >= ModuleId::COUNT) {
+        s_cli_out->printf("Unknown module: %s\n", name);
         return;
     }
 
-    if (std::strcmp(argv[1], "list") == 0) {
-        s_cli_out->println("Module Status:");
-        for (int i = 0; i < MOD_COUNT; ++i) {
-            const auto* info = moduleGetInfo(static_cast<FirmwareFeatureId>(i));
-            if (!info) continue;
-            s_cli_out->printf("  %-6s (%d) = %-11s pins=%u deps=%s\n",
-                          info->name ? info->name : "?",
-                          i,
-                          modStateToStr(moduleGetState(static_cast<FirmwareFeatureId>(i))),
-                          static_cast<unsigned>(info->pin_count),
-                          info->deps ? "yes" : "none");
-        }
-        return;
-    }
+    const auto* rt = moduleSysGet(id);
+    const auto* ops = rt->ops;
 
-    if (argc < 3) {
-        s_cli_out->println("usage: module <enable|disable|pins> <name>");
-        return;
-    }
+    s_cli_out->printf("=== Module: %s ===\n", ops->name);
+    s_cli_out->printf("  Active:    %s\n", rt->active ? "YES" : "NO");
+    s_cli_out->printf("  Enabled:   %s\n", (ops->is_enabled && ops->is_enabled()) ? "YES" : "NO");
+    s_cli_out->printf("  Detected:  %s\n", rt->state.detected ? "YES" : "NO");
+    s_cli_out->printf("  Quality:   %s\n", rt->state.quality_ok ? "OK" : "BAD");
+    s_cli_out->printf("  LastUpd:   %lu ms ago\n",
+                      (unsigned long)(hal_millis() - rt->state.last_update_ms));
+    s_cli_out->printf("  ErrorCode: %ld\n", (long)rt->state.error_code);
+    s_cli_out->printf("  Healthy:   %s\n",
+                      moduleSysIsHealthy(id, hal_millis()) ? "YES" : "NO");
 
-    FirmwareFeatureId id = MOD_COUNT;
-    if (!parseModuleName(argv[2], &id)) {
-        s_cli_out->println("ERROR: unknown module name.");
-        return;
-    }
-
-    if (std::strcmp(argv[1], "enable") == 0) {
-        const bool ok = moduleActivate(id);
-        s_cli_out->printf("module %s -> %s\n", argv[2], ok ? "ON" : "ERROR");
-        return;
-    }
-
-    if (std::strcmp(argv[1], "disable") == 0) {
-        if (id == MOD_ETH) {
-            s_cli_out->println("ERROR: ETH is mandatory and cannot be disabled.");
-            return;
-        }
-        const bool ok = moduleDeactivate(id);
-        s_cli_out->printf("module %s -> %s\n", argv[2], ok ? "OFF" : "ERROR");
-        return;
-    }
-
-    if (std::strcmp(argv[1], "pins") == 0) {
-        const auto* info = moduleGetInfo(id);
-        if (!info) {
-            s_cli_out->println("ERROR: module not found.");
-            return;
-        }
-        s_cli_out->printf("%s pins:", info->name ? info->name : argv[2]);
-        if (!info->pins || info->pin_count == 0) {
-            s_cli_out->println(" (none)");
-            return;
-        }
-        for (uint8_t i = 0; i < info->pin_count; ++i) {
-            s_cli_out->printf(" %d", static_cast<int>(info->pins[i]));
+    // Dependencies
+    if (ops->deps) {
+        s_cli_out->print("  Deps:      ");
+        for (int d = 0; ops->deps[d] != ModuleId::COUNT; d++) {
+            const char* dep_name = moduleIdToName(ops->deps[d]);
+            const bool dep_ok = moduleSysIsActive(ops->deps[d]);
+            s_cli_out->printf("%s(%s) ", dep_name, dep_ok ? "OK" : "MISS");
         }
         s_cli_out->println();
+    } else {
+        s_cli_out->println("  Deps:      none");
+    }
+
+    // Show config
+    if (ops->cfg_show) {
+        s_cli_out->println("  Config:");
+        ops->cfg_show();
+    }
+}
+
+// ===================================================================
+// module <name> set <key> <val>
+// ===================================================================
+static void cliModuleSet(const char* name, const char* key, const char* val) {
+    ModuleId id = moduleIdFromName(name);
+    if (id >= ModuleId::COUNT) {
+        s_cli_out->printf("Unknown module: %s\n", name);
+        return;
+    }
+    const auto* ops = moduleSysOps(id);
+    if (!ops->cfg_set) {
+        s_cli_out->println("Module has no config interface.");
+        return;
+    }
+    const bool ok = ops->cfg_set(key, val);
+    s_cli_out->printf("%s.%s = %s -> %s\n", name, key, val, ok ? "OK" : "FAIL");
+}
+
+// ===================================================================
+// module <name> load / save / apply
+// ===================================================================
+static void cliModuleLoad(const char* name) {
+    ModuleId id = moduleIdFromName(name);
+    if (id >= ModuleId::COUNT) { s_cli_out->printf("Unknown module: %s\n", name); return; }
+    const auto* ops = moduleSysOps(id);
+    if (!ops->cfg_load) { s_cli_out->println("Module has no load interface."); return; }
+    s_cli_out->printf("%s: loading from NVS... ", name);
+    const bool ok = ops->cfg_load();
+    s_cli_out->println(ok ? "OK" : "FAIL");
+}
+
+static void cliModuleSave(const char* name) {
+    ModuleId id = moduleIdFromName(name);
+    if (id >= ModuleId::COUNT) { s_cli_out->printf("Unknown module: %s\n", name); return; }
+    const auto* ops = moduleSysOps(id);
+    if (!ops->cfg_save) { s_cli_out->println("Module has no save interface."); return; }
+    s_cli_out->printf("%s: saving to NVS... ", name);
+    const bool ok = ops->cfg_save();
+    s_cli_out->println(ok ? "OK" : "FAIL");
+}
+
+static void cliModuleApply(const char* name) {
+    ModuleId id = moduleIdFromName(name);
+    if (id >= ModuleId::COUNT) { s_cli_out->printf("Unknown module: %s\n", name); return; }
+    const auto* ops = moduleSysOps(id);
+    if (!ops->cfg_apply) { s_cli_out->println("Module has no apply interface."); return; }
+    s_cli_out->printf("%s: applying config... ", name);
+    const bool ok = ops->cfg_apply();
+    s_cli_out->println(ok ? "OK" : "FAIL");
+}
+
+// ===================================================================
+// module <name> activate / deactivate
+// ===================================================================
+static void cliModuleActivate(const char* name) {
+    ModuleId id = moduleIdFromName(name);
+    if (id >= ModuleId::COUNT) { s_cli_out->printf("Unknown module: %s\n", name); return; }
+    const bool ok = moduleSysActivate(id);
+    s_cli_out->printf("%s: activate -> %s\n", name, ok ? "ON" : "ERROR");
+}
+
+static void cliModuleDeactivate(const char* name) {
+    ModuleId id = moduleIdFromName(name);
+    if (id >= ModuleId::COUNT) { s_cli_out->printf("Unknown module: %s\n", name); return; }
+    if (id == ModuleId::ETH) {
+        s_cli_out->println("ERROR: ETH is mandatory and cannot be deactivated.");
+        return;
+    }
+    const bool ok = moduleSysDeactivate(id);
+    s_cli_out->printf("%s: deactivate -> %s\n", name, ok ? "OFF" : "ERROR");
+}
+
+// ===================================================================
+// module <name> debug
+// ===================================================================
+static void cliModuleDebug(const char* name) {
+    ModuleId id = moduleIdFromName(name);
+    if (id >= ModuleId::COUNT) { s_cli_out->printf("Unknown module: %s\n", name); return; }
+    const auto* ops = moduleSysOps(id);
+    if (!ops->debug) { s_cli_out->println("Module has no debug interface."); return; }
+    s_cli_out->printf("%s: running lifecycle debug...\n", name);
+    const bool ok = ops->debug();
+    s_cli_out->printf("%s: debug -> %s\n", name, ok ? "PASS" : "FAIL");
+}
+
+// ===================================================================
+// mode config | work
+// ===================================================================
+static void cliModeSet(const char* mode_str) {
+    OpMode target;
+    if (std::strcmp(mode_str, "config") == 0) {
+        target = OpMode::CONFIG;
+    } else if (std::strcmp(mode_str, "work") == 0) {
+        target = OpMode::WORK;
+    } else {
+        s_cli_out->printf("Unknown mode: %s (use 'config' or 'work')\n", mode_str);
         return;
     }
 
-    s_cli_out->println("usage: module <list|enable|disable|pins> [name]");
+    const OpMode current = modeGet();
+    if (target == current) {
+        s_cli_out->printf("Already in mode: %s\n", modeToString(current));
+        return;
+    }
+
+    const bool ok = modeSet(target);
+    if (ok) {
+        s_cli_out->printf("Mode: %s -> %s\n", modeToString(current), modeToString(target));
+    } else {
+        s_cli_out->printf("Mode transition REJECTED: %s -> %s\n",
+                          modeToString(current), modeToString(target));
+    }
 }
 
-}  // namespace
+// ===================================================================
+// Dispatch
+// ===================================================================
+static void cliCmdModule(int argc, char** argv) {
+    if (argc < 2) {
+        s_cli_out->println("usage: module <list|show|set|load|apply|save|activate|deactivate|debug> [name] [key] [val]");
+        return;
+    }
 
+    // module list
+    if (std::strcmp(argv[1], "list") == 0) {
+        cliModuleList();
+        return;
+    }
+
+    // module <name> <action>
+    if (argc >= 3) {
+        const char* name = argv[2];
+        const char* action = argv[1];
+
+        if (std::strcmp(action, "show") == 0)      { cliModuleShow(name); return; }
+        if (std::strcmp(action, "activate") == 0)  { cliModuleActivate(name); return; }
+        if (std::strcmp(action, "deactivate") == 0){ cliModuleDeactivate(name); return; }
+        if (std::strcmp(action, "debug") == 0)     { cliModuleDebug(name); return; }
+        if (std::strcmp(action, "load") == 0)      { cliModuleLoad(name); return; }
+        if (std::strcmp(action, "save") == 0)      { cliModuleSave(name); return; }
+        if (std::strcmp(action, "apply") == 0)     { cliModuleApply(name); return; }
+
+        // module <name> set <key> <val>
+        if (std::strcmp(action, "set") == 0 && argc >= 5) {
+            cliModuleSet(name, argv[3], argv[4]);
+            return;
+        }
+        if (std::strcmp(action, "set") == 0) {
+            s_cli_out->println("usage: module <name> set <key> <val>");
+            return;
+        }
+    }
+
+    s_cli_out->println("usage: module <list|show|set|load|apply|save|activate|deactivate|debug> [name] [key] [val]");
+}
+
+static void cliCmdMode(int argc, char** argv) {
+    if (argc < 2) {
+        s_cli_out->printf("Current mode: %s\n", modeToString(modeGet()));
+        s_cli_out->println("usage: mode <config|work>");
+        return;
+    }
+    cliModeSet(argv[1]);
+}
+
+// ===================================================================
+// Registration
+// ===================================================================
 void cmd_module_register(void) {
-    (void)cliRegisterCommand("module", &cliCmdModule, "Module runtime control");
+    (void)cliRegisterCommand("module", &cliCmdModule, "Module control (list/show/set/load/apply/save/activate/deactivate/debug)");
+    (void)cliRegisterCommand("mode", &cliCmdMode, "Operating mode (config|work)");
 }
