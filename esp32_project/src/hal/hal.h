@@ -326,9 +326,17 @@ bool hal_net_restart(void);
 uint32_t hal_net_get_ip(void);
 uint32_t hal_net_get_gateway(void);
 uint32_t hal_net_get_subnet(void);
+uint32_t hal_net_get_dns(void);
 
 /// Ethernet link state (PHY/link only).
 bool hal_net_link_up(void);
+
+/// Ethernet MAC address (6 bytes into caller-provided buffer).
+void hal_net_get_mac(uint8_t* mac_out);
+
+/// Ethernet link speed (Mbps) and duplex mode.
+uint8_t hal_net_link_speed(void);  // 0 = unknown/down
+bool hal_net_full_duplex(void);
 
 // ===================================================================
 // Pin Claim Arbitration — TASK-027

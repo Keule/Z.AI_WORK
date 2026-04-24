@@ -29,6 +29,7 @@
 #include "esp_log.h"
 
 #include <Arduino.h>
+#include <cstring>
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include "esp_wifi.h"
@@ -288,4 +289,28 @@ uint32_t hal_net_get_subnet(void) {
 
 bool hal_net_link_up(void) {
     return s_eth_link_up;
+}
+
+uint32_t hal_net_get_dns(void) {
+    return ipToU32(s_dns);
+}
+
+void hal_net_get_mac(uint8_t* mac_out) {
+    if (!mac_out) return;
+    if (s_eth_has_ip) {
+        ETH.macAddress(mac_out);
+    } else {
+        // Return zeros if not connected
+        std::memset(mac_out, 0, 6);
+    }
+}
+
+uint8_t hal_net_link_speed(void) {
+    if (!s_eth_link_up) return 0;
+    return static_cast<uint8_t>(ETH.linkSpeed());
+}
+
+bool hal_net_full_duplex(void) {
+    if (!s_eth_link_up) return false;
+    return ETH.fullDuplex();
 }
