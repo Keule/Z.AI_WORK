@@ -1,0 +1,1379 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Serieller Monitor</title>
+  <style>
+    :root {
+      --bg: #f3f5f7;
+      --card: #ffffff;
+      --border: #d9dee5;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --primary: #2563eb;
+      --primary-soft: #dbeafe;
+      --log-bg: #0f172a;
+      --log-text: #e5e7eb;
+      --log-muted: #93a3b8;
+      --shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+      --radius: 16px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .app {
+      max-width: 1700px;
+      margin: 0 auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 16px;
+    }
+
+    .card h2 {
+      margin: 0 0 10px 0;
+      font-size: 1rem;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .title-block h1 {
+      margin: 0;
+      font-size: 1.6rem;
+    }
+
+    .subtitle {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 0.96rem;
+    }
+
+    .topbar-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .statusbar {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      font-size: 0.92rem;
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .row:last-child { margin-bottom: 0; }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      width: 100%;
+    }
+
+    .field.inline { width: auto; }
+
+    label { font-size: 0.92rem; }
+
+    input, button, select, textarea {
+      font: inherit;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      background: #fff;
+      color: var(--text);
+    }
+
+    textarea {
+      min-height: 72px;
+      resize: vertical;
+    }
+
+    button { cursor: pointer; background: #fff; }
+    button.primary { background: var(--primary); color: white; border-color: var(--primary); }
+    button.secondary { background: var(--primary-soft); border-color: #bfdbfe; }
+    button.ghost { background: transparent; }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    .muted { color: var(--muted); font-size: 0.9rem; }
+    .regex-invalid { border: 2px solid #c62828; background: #fff3f3; }
+
+    .section-note {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-top: 10px;
+      line-height: 1.4;
+    }
+
+    .collapsible-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .collapse-indicator {
+      font-size: 1rem;
+      transition: transform 0.2s ease;
+    }
+
+    .collapsed .collapse-indicator {
+      transform: rotate(-90deg);
+    }
+
+    .collapsible-content {
+      margin-top: 12px;
+    }
+
+    .collapsed .collapsible-content {
+      display: none;
+    }
+
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    .toolbar-left, .toolbar-right {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .log-frame {
+      border: 1px solid #1e293b;
+      border-radius: 16px;
+      overflow: hidden;
+      background: var(--log-bg);
+      position: relative;
+    }
+
+    .log-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 14px;
+      background: #111c34;
+      border-bottom: 1px solid #24324f;
+      color: var(--log-muted);
+      font-size: 0.9rem;
+    }
+
+    #log {
+      height: 60vh;
+      overflow: auto;
+      padding: 12px;
+      font-family: "Cascadia Mono", "Fira Code", Consolas, monospace;
+      font-size: 0.93rem;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      color: var(--log-text);
+      position: relative;
+      user-select: text;
+    }
+
+    .log-line {
+      padding: 2px 6px;
+      border-radius: 8px;
+    }
+
+    .log-prefix { color: #93c5fd; }
+    .log-line.system { color: #c4b5fd; }
+
+    .send-grid {
+      display: grid;
+      grid-template-columns: 1fr 240px;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .quick-buttons {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .selection-toolbar {
+      position: fixed;
+      z-index: 1000;
+      display: none;
+      gap: 8px;
+      background: rgba(15, 23, 42, 0.96);
+      color: white;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 14px;
+      box-shadow: 0 14px 34px rgba(15, 23, 42, 0.28);
+      padding: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      max-width: 620px;
+    }
+
+    .selection-toolbar .label {
+      font-size: 0.82rem;
+      color: #bfdbfe;
+      margin-right: 4px;
+    }
+
+    .selection-toolbar button {
+      background: #1e293b;
+      border-color: #334155;
+      color: white;
+      padding: 8px 10px;
+    }
+
+    .selection-preview {
+      max-width: 220px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #e2e8f0;
+      font-size: 0.82rem;
+      padding: 0 6px;
+    }
+
+    .rules-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: 440px;
+      overflow: auto;
+    }
+
+    .rule-item {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 10px;
+      background: #fafafa;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .rule-top {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 180px auto;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .rule-style-row {
+      display: grid;
+      grid-template-columns: 140px 1fr 1fr 120px auto;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .rule-meta {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: #eef2ff;
+      color: #3730a3;
+      font-size: 0.78rem;
+      border: 1px solid #c7d2fe;
+    }
+
+    .rule-preview {
+      padding: 8px 10px;
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+      font-family: "Cascadia Mono", monospace;
+      background: white;
+      min-height: 38px;
+    }
+
+    .editor-toggle-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .editor-toggle-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .editor-toggle-btn .arrow {
+      display: inline-block;
+      transition: transform 0.2s ease;
+    }
+
+    .collapsed .editor-toggle-btn .arrow {
+      transform: rotate(-90deg);
+    }
+
+    .rule-editor-box {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 12px;
+      background: #fafafa;
+    }
+
+    @media (max-width: 1200px) {
+      .send-grid { grid-template-columns: 1fr; }
+      .rule-top, .rule-style-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="topbar">
+      <div class="title-block">
+        <h1>Serieller Monitor</h1>
+        <div class="subtitle">Live-Konsole für MCU-Logs, einheitliche Regeln, Hervorhebungen und Textimport.</div>
+      </div>
+      <div class="topbar-actions">
+        <button id="connectBtn" class="primary">Verbinden</button>
+        <button id="disconnectBtn" disabled>Trennen</button>
+        <button id="pauseBtn">Pause</button>
+      </div>
+    </div>
+
+    <div class="statusbar">
+      <div class="chip" id="connectionChip">Nicht verbunden</div>
+      <div class="chip" id="pauseChip">Live</div>
+      <div class="chip" id="sourceChip">Quelle: Seriell</div>
+      <div class="chip" id="filterChip">Standard: eingeblendet</div>
+      <div class="chip" id="visibleChip">Sichtbar: 0 / 0</div>
+    </div>
+
+    <div class="card" id="sourceSettingsCard">
+      <div class="collapsible-header" id="sourceSettingsHeader">
+        <div>
+          <h2 style="margin:0;">Datenquelle & Verbindungseinstellungen</h2>
+          <div class="muted">Port, Baudrate, Textimport und Rückwechsel zur seriellen Ansicht.</div>
+        </div>
+        <div class="collapse-indicator">▾</div>
+      </div>
+      <div class="collapsible-content">
+        <div class="row">
+          <label class="field inline">
+            Baudrate
+            <input id="baud" type="number" value="115200" min="1" step="1" />
+          </label>
+          <label class="field inline" style="margin-top: 22px;">
+            <span><input id="timestamps" type="checkbox" /> Zeitstempel für Systemmeldungen</span>
+          </label>
+        </div>
+        <div class="row">
+          <label class="field">
+            Textdatei auswählen
+            <input id="importTxtInput" type="file" accept=".txt,text/plain" />
+          </label>
+        </div>
+        <div class="row">
+          <button id="loadTxtAsLogBtn">Datei anzeigen</button>
+          <button id="useTxtAsTemplateBtn">Als Regelvorlage übernehmen</button>
+          <button id="returnToSerialBtn">Zur seriellen Ansicht</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <button id="clearBtn">Leeren</button>
+          <button id="exportFilteredTxtBtn">Sichtbare Zeilen speichern</button>
+          <button id="exportAllTxtBtn">Alle Zeilen speichern</button>
+        </div>
+        <div class="toolbar-right muted">
+          <span id="modeSummary">Ansicht: Live</span>
+        </div>
+      </div>
+
+      <div class="log-frame">
+        <div class="log-header">
+          <span id="logTitle">Live-Log</span>
+          <span id="logMeta">Keine Daten</span>
+        </div>
+        <div id="log"></div>
+      </div>
+    </div>
+
+    <div class="card" id="ruleEditorCard">
+      <div class="editor-toggle-row">
+        <button id="toggleRuleEditorBtn" class="ghost editor-toggle-btn"><span class="arrow">▾</span><span>Regel erstellen</span></button>
+        <div class="muted" id="newRuleStatus">Automatische Regeln entstehen weiterhin aus häufigen Präfixen.</div>
+      </div>
+      <div class="collapsible-content" id="ruleEditorContent">
+        <div class="rule-editor-box">
+          <div class="row">
+            <label class="field">
+              Standard für ungefilterte Zeilen
+              <select id="defaultVisibilityMode">
+                <option value="show" selected>Alles ungefilterte eingeblendet</option>
+                <option value="hide">Alles ungefilterte ausgeblendet</option>
+              </select>
+            </label>
+          </div>
+          <div class="row">
+            <label class="field">
+              Neue Regex-Regel
+              <input id="newRuleRegex" type="text" placeholder="z. B. ^\[\s*4426\]|error|warn" />
+            </label>
+          </div>
+          <div class="row">
+            <label class="field inline"><span><input id="newRuleCaseInsensitive" type="checkbox" checked /> Groß/Kleinschreibung ignorieren</span></label>
+            <label class="field inline"><span><input id="newRuleAutoEscape" type="checkbox" /> Text als Regex-Vorschlag übernehmen</span></label>
+          </div>
+          <div class="row">
+            <label class="field inline">
+              Wirkung
+              <select id="newRuleEffect">
+                <option value="hide">Ausblenden</option>
+                <option value="show">Einblenden</option>
+                <option value="mark_match">Filterstelle markieren</option>
+                <option value="mark_line">Filterzeile markieren</option>
+              </select>
+            </label>
+            <button id="addRuleBtn" class="secondary">Regel hinzufügen</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="collapsible-header" id="rulesListHeader">
+        <div>
+          <h2 style="margin:0;">Verfügbare Regeln</h2>
+          <div class="muted">Automatisch erzeugte und manuell hinzugefügte Regeln an einer Stelle.</div>
+        </div>
+        <div class="collapse-indicator">▾</div>
+      </div>
+      <div class="collapsible-content">
+        <div class="rules-list" id="rulesList">
+          <div class="muted">Noch keine Regeln vorhanden.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Senden</h2>
+      <div class="section-note">Befehle werden nur in serieller Ansicht an den geöffneten Port gesendet.</div>
+      <div class="send-grid">
+        <div>
+          <label class="field">
+            Eingabe
+            <textarea id="sendText" placeholder="Befehl oder Text an den MCU senden"></textarea>
+          </label>
+          <div class="quick-buttons">
+            <button class="quick" data-cmd="help">help</button>
+            <button class="quick" data-cmd="status">status</button>
+            <button class="quick" data-cmd="reset">reset</button>
+          </div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px; min-width: 220px;">
+          <label class="field">
+            Zeilenende
+            <select id="lineEnding">
+              <option value="none">Keines</option>
+              <option value="lf">LF (\n)</option>
+              <option value="cr">CR (\r)</option>
+              <option value="crlf" selected>CRLF (\r\n)</option>
+            </select>
+          </label>
+          <button id="sendBtn" class="secondary" disabled>Senden</button>
+          <button id="sendEnterBtn" disabled>Enter senden</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="selection-toolbar" id="selectionToolbar">
+    <span class="label">Auswahl</span>
+    <span class="selection-preview" id="selectionPreview"></span>
+    <button id="selectionHideBtn">Ausblenden</button>
+    <button id="selectionShowBtn">Einblenden</button>
+    <button id="selectionMarkMatchBtn">Stelle markieren</button>
+    <button id="selectionMarkLineBtn">Zeile markieren</button>
+    <button id="selectionCloseBtn">×</button>
+  </div>
+
+  <script>
+    let port = null;
+    let reader = null;
+    let keepReading = false;
+    let isPaused = false;
+    let selectionText = "";
+    let ruleIdCounter = 1;
+
+    const connectBtn = document.getElementById("connectBtn");
+    const disconnectBtn = document.getElementById("disconnectBtn");
+    const pauseBtn = document.getElementById("pauseBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const baudEl = document.getElementById("baud");
+    const timestampsEl = document.getElementById("timestamps");
+    const sendBtn = document.getElementById("sendBtn");
+    const sendEnterBtn = document.getElementById("sendEnterBtn");
+    const sendTextEl = document.getElementById("sendText");
+    const lineEndingEl = document.getElementById("lineEnding");
+    const defaultVisibilityModeEl = document.getElementById("defaultVisibilityMode");
+    const newRuleRegexEl = document.getElementById("newRuleRegex");
+    const newRuleCaseInsensitiveEl = document.getElementById("newRuleCaseInsensitive");
+    const newRuleAutoEscapeEl = document.getElementById("newRuleAutoEscape");
+    const newRuleEffectEl = document.getElementById("newRuleEffect");
+    const addRuleBtn = document.getElementById("addRuleBtn");
+    const newRuleStatusEl = document.getElementById("newRuleStatus");
+    const rulesListEl = document.getElementById("rulesList");
+    const exportFilteredTxtBtn = document.getElementById("exportFilteredTxtBtn");
+    const exportAllTxtBtn = document.getElementById("exportAllTxtBtn");
+    const importTxtInput = document.getElementById("importTxtInput");
+    const loadTxtAsLogBtn = document.getElementById("loadTxtAsLogBtn");
+    const useTxtAsTemplateBtn = document.getElementById("useTxtAsTemplateBtn");
+    const returnToSerialBtn = document.getElementById("returnToSerialBtn");
+    const logEl = document.getElementById("log");
+    const selectionToolbar = document.getElementById("selectionToolbar");
+    const selectionPreview = document.getElementById("selectionPreview");
+    const selectionHideBtn = document.getElementById("selectionHideBtn");
+    const selectionShowBtn = document.getElementById("selectionShowBtn");
+    const selectionMarkMatchBtn = document.getElementById("selectionMarkMatchBtn");
+    const selectionMarkLineBtn = document.getElementById("selectionMarkLineBtn");
+    const selectionCloseBtn = document.getElementById("selectionCloseBtn");
+    const sourceSettingsCard = document.getElementById("sourceSettingsCard");
+    const sourceSettingsHeader = document.getElementById("sourceSettingsHeader");
+    const ruleEditorCard = document.getElementById("ruleEditorCard");
+    const toggleRuleEditorBtn = document.getElementById("toggleRuleEditorBtn");
+    const ruleEditorContent = document.getElementById("ruleEditorContent");
+    const rulesListHeader = document.getElementById("rulesListHeader");
+
+    const connectionChip = document.getElementById("connectionChip");
+    const pauseChip = document.getElementById("pauseChip");
+    const sourceChip = document.getElementById("sourceChip");
+    const filterChip = document.getElementById("filterChip");
+    const visibleChip = document.getElementById("visibleChip");
+    const modeSummaryEl = document.getElementById("modeSummary");
+    const logTitleEl = document.getElementById("logTitle");
+    const logMetaEl = document.getElementById("logMeta");
+
+    const MAX_LINES = 4000;
+    const AUTO_RULE_MIN_COUNT = 10;
+
+    let completedLines = [];
+    let currentLineChars = [];
+    let cursorPos = 0;
+
+    let serialCompletedLines = [];
+    let serialCurrentLineChars = [];
+    let serialCursorPos = 0;
+
+    let currentSourceMode = "serial";
+    let importedFileName = "";
+
+    const prefixCounts = new Map();
+    const autoPrefixSet = new Set();
+    const rules = [];
+
+    function ts() {
+      return timestampsEl.checked ? `[${new Date().toLocaleTimeString("de-DE")}] ` : "";
+    }
+
+    function debugVisible(str) {
+      return str.replace(/\\/g, "\\\\").replace(/\r/g, "\\r").replace(/\n/g, "\\n");
+    }
+
+    function escapeRegexLiteral(text) {
+      return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+
+    function buildSuggestedRegexFromSelection(text) {
+      const escaped = escapeRegexLiteral(text.trim());
+      return escaped.replace(/\s+/g, "\\s+");
+    }
+
+    function setCollapsed(card, collapsed) {
+      card.classList.toggle("collapsed", collapsed);
+    }
+
+    function openRuleEditor() {
+      setCollapsed(ruleEditorCard, false);
+    }
+
+    function getLineEndingBytes() {
+      switch (lineEndingEl.value) {
+        case "lf": return "\n";
+        case "cr": return "\r";
+        case "crlf": return "\r\n";
+        default: return "";
+      }
+    }
+
+    function extractPrefix(line) {
+      const match = line.match(/^\[([^\]]+)\]/);
+      return match ? match[1] : null;
+    }
+
+    function rgbaFromHex(hex, opacity) {
+      const value = hex.replace("#", "");
+      const bigint = parseInt(value, 16);
+      const r = (bigint >> 16) & 255;
+      const g = (bigint >> 8) & 255;
+      const b = bigint & 255;
+      return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+    }
+
+    function defaultStyleForEffect(effect) {
+      if (effect === "mark_line") return { textColor: "#e5e7eb", backgroundColor: "#065f46", opacity: 0.28, mode: "line" };
+      if (effect === "mark_match") return { textColor: "#ffffff", backgroundColor: "#7c3aed", opacity: 0.42, mode: "match" };
+      return { textColor: "#e5e7eb", backgroundColor: "#065f46", opacity: 0.28, mode: "line" };
+    }
+
+    function compileRule(rule) {
+      try {
+        rule.regex = new RegExp(rule.pattern, rule.caseInsensitive ? "ig" : "g");
+        rule.error = null;
+      } catch (err) {
+        rule.regex = null;
+        rule.error = err.message;
+      }
+    }
+
+    function createRule({ pattern, effect, caseInsensitive = true, autoGenerated = false, label = "", style = null }) {
+      const rule = {
+        id: ruleIdCounter++,
+        pattern,
+        effect,
+        caseInsensitive,
+        autoGenerated,
+        label,
+        enabled: true,
+        style: style || defaultStyleForEffect(effect),
+        regex: null,
+        error: null
+      };
+      compileRule(rule);
+      rules.push(rule);
+      return rule;
+    }
+
+    function upsertAutoPrefixRule(prefix) {
+      const pattern = `^\\[${escapeRegexLiteral(prefix)}\\]`;
+      const existing = rules.find(r => r.autoGenerated && r.label === prefix);
+      if (existing) {
+        existing.pattern = pattern;
+        existing.effect = defaultVisibilityModeEl.value === "show" ? "hide" : "show";
+        compileRule(existing);
+        return existing;
+      }
+      return createRule({
+        pattern,
+        effect: defaultVisibilityModeEl.value === "show" ? "hide" : "show",
+        caseInsensitive: false,
+        autoGenerated: true,
+        label: prefix
+      });
+    }
+
+    function setSuggestedSelectionRegex(text, effect) {
+      newRuleRegexEl.value = buildSuggestedRegexFromSelection(text);
+      newRuleAutoEscapeEl.checked = false;
+      newRuleEffectEl.value = effect;
+      newRuleStatusEl.textContent = "Regex-Vorschlag aus Markierung übernommen und aktiviert.";
+      openRuleEditor();
+    }
+
+    function addRuleFromEditor() {
+      const raw = newRuleRegexEl.value.trim();
+      if (!raw) {
+        newRuleStatusEl.textContent = "Bitte zuerst ein Regex oder einen Text eingeben.";
+        return;
+      }
+      const pattern = newRuleAutoEscapeEl.checked ? buildSuggestedRegexFromSelection(raw) : raw;
+      const rule = createRule({
+        pattern,
+        effect: newRuleEffectEl.value,
+        caseInsensitive: newRuleCaseInsensitiveEl.checked,
+        autoGenerated: false
+      });
+      if (rule.error) {
+        newRuleStatusEl.textContent = "Regex-Fehler: " + rule.error;
+      } else {
+        newRuleStatusEl.textContent = "Regel hinzugefügt.";
+        newRuleRegexEl.value = "";
+      }
+      renderRules();
+      renderLog();
+    }
+
+    function evaluateLine(line) {
+      let visible = defaultVisibilityModeEl.value === "show";
+      const matchStyles = [];
+      const lineStyles = [];
+      for (const rule of rules) {
+        if (!rule.enabled || !rule.regex || rule.error) continue;
+        rule.regex.lastIndex = 0;
+        const matches = Array.from(line.matchAll(rule.regex));
+        if (!matches.length) continue;
+        if (rule.effect === "hide") visible = false;
+        else if (rule.effect === "show") visible = true;
+        else if (rule.effect === "mark_match") matchStyles.push({ rule, matches });
+        else if (rule.effect === "mark_line") lineStyles.push(rule);
+      }
+      return { visible, matchStyles, lineStyles };
+    }
+
+    function renderLineWithMatchStyles(targetEl, text, matchStyles) {
+      if (!matchStyles.length) {
+        const span = document.createElement("span");
+        span.textContent = text;
+        targetEl.appendChild(span);
+        return;
+      }
+      const segments = [];
+      for (const entry of matchStyles) {
+        const style = entry.rule.style;
+        for (const m of entry.matches) {
+          segments.push({ start: m.index, end: m.index + m[0].length, style });
+        }
+      }
+      segments.sort((a, b) => a.start - b.start || a.end - b.end);
+      let cursor = 0;
+      for (const seg of segments) {
+        if (seg.start < cursor) continue;
+        const before = text.slice(cursor, seg.start);
+        if (before) {
+          const spanBefore = document.createElement("span");
+          spanBefore.textContent = before;
+          targetEl.appendChild(spanBefore);
+        }
+        const hit = document.createElement("span");
+        hit.textContent = text.slice(seg.start, seg.end);
+        hit.style.color = seg.style.textColor;
+        hit.style.background = rgbaFromHex(seg.style.backgroundColor, seg.style.opacity);
+        hit.style.borderRadius = "6px";
+        hit.style.padding = "0 2px";
+        targetEl.appendChild(hit);
+        cursor = seg.end;
+      }
+      const rest = text.slice(cursor);
+      if (rest) {
+        const spanRest = document.createElement("span");
+        spanRest.textContent = rest;
+        targetEl.appendChild(spanRest);
+      }
+    }
+
+    function applyLineStyles(wrapper, lineStyles) {
+      if (!lineStyles.length) return;
+      const style = lineStyles[lineStyles.length - 1].style;
+      wrapper.style.color = style.textColor;
+      wrapper.style.background = rgbaFromHex(style.backgroundColor, style.opacity);
+      wrapper.style.outline = "1px solid " + rgbaFromHex(style.backgroundColor, Math.min(style.opacity + 0.15, 1));
+    }
+
+    function updateConnectionState() {
+      connectionChip.textContent = port ? "Verbunden" : "Nicht verbunden";
+    }
+
+    function updatePauseState() {
+      pauseBtn.textContent = isPaused ? "Fortsetzen" : "Pause";
+      pauseChip.textContent = isPaused ? "Pausiert" : "Live";
+    }
+
+    function updateSourceState() {
+      if (currentSourceMode === "serial") {
+        sourceChip.textContent = "Quelle: Seriell";
+        modeSummaryEl.textContent = isPaused ? "Ansicht: Pausiert" : "Ansicht: Live";
+        logTitleEl.textContent = "Live-Log";
+      } else {
+        sourceChip.textContent = "Quelle: Datei" + (importedFileName ? " · " + importedFileName : "");
+        modeSummaryEl.textContent = "Ansicht: Datei";
+        logTitleEl.textContent = "Dateilog";
+      }
+    }
+
+    function updateFilterState() {
+      filterChip.textContent = defaultVisibilityModeEl.value === "show" ? "Standard: eingeblendet" : "Standard: ausgeblendet";
+    }
+
+    function getAllLines(includeCurrent = true) {
+      const lines = [...completedLines];
+      if (includeCurrent) {
+        const currentLine = currentLineChars.join("");
+        if (currentLine) lines.push(currentLine);
+      }
+      return lines;
+    }
+
+    function getVisibleLines(includeCurrent = true) {
+      return getAllLines(includeCurrent).filter(line => evaluateLine(line).visible);
+    }
+
+    function updateVisibleState() {
+      const visible = getVisibleLines(true).length;
+      const total = getAllLines(true).length;
+      visibleChip.textContent = "Sichtbar: " + visible + " / " + total;
+      logMetaEl.textContent = visible + " sichtbar · " + total + " gesamt · " + rules.filter(r => r.enabled).length + " Regeln aktiv";
+    }
+
+    function observeAutoPrefix(line) {
+      const prefix = extractPrefix(line);
+      if (!prefix) return;
+      const count = (prefixCounts.get(prefix) || 0) + 1;
+      prefixCounts.set(prefix, count);
+      if (count >= AUTO_RULE_MIN_COUNT && !autoPrefixSet.has(prefix)) {
+        autoPrefixSet.add(prefix);
+        upsertAutoPrefixRule(prefix);
+        renderRules();
+      }
+    }
+
+    function rebuildAutoPrefixRulesFromCurrentLines() {
+      prefixCounts.clear();
+      autoPrefixSet.clear();
+      for (let i = rules.length - 1; i >= 0; i--) {
+        if (rules[i].autoGenerated) rules.splice(i, 1);
+      }
+      for (const line of completedLines) observeAutoPrefix(line);
+      const currentLine = currentLineChars.join("");
+      if (currentLine) observeAutoPrefix(currentLine);
+      renderRules();
+    }
+
+    function buildRulePreview(rule) {
+      const example = "[1234] error timeout while reading ADC";
+      if (rule.effect === "mark_match") return `Markiert Fundstellen in: ${example}`;
+      if (rule.effect === "mark_line") return `Markiert ganze Zeilen wie: ${example}`;
+      if (rule.effect === "hide") return "Blendet passende Zeilen aus.";
+      if (rule.effect === "show") return "Blendet passende Zeilen ein.";
+      return "";
+    }
+
+    function renderRules() {
+      rulesListEl.innerHTML = "";
+      if (!rules.length) {
+        rulesListEl.innerHTML = '<div class="muted">Noch keine Regeln vorhanden.</div>';
+        return;
+      }
+      rules.forEach(rule => {
+        const item = document.createElement("div");
+        item.className = "rule-item";
+        const top = document.createElement("div");
+        top.className = "rule-top";
+        const patternInput = document.createElement("input");
+        patternInput.value = rule.pattern;
+        patternInput.addEventListener("input", () => {
+          rule.pattern = patternInput.value;
+          compileRule(rule);
+          renderRules();
+          renderLog();
+        });
+        const effectSelect = document.createElement("select");
+        effectSelect.innerHTML = `
+          <option value="hide">Ausblenden</option>
+          <option value="show">Einblenden</option>
+          <option value="mark_match">Filterstelle markieren</option>
+          <option value="mark_line">Filterzeile markieren</option>
+        `;
+        effectSelect.value = rule.effect;
+        effectSelect.addEventListener("change", () => {
+          rule.effect = effectSelect.value;
+          if (rule.effect === "mark_match") rule.style.mode = "match";
+          if (rule.effect === "mark_line") rule.style.mode = "line";
+          renderRules();
+          renderLog();
+        });
+        const enabledWrap = document.createElement("label");
+        enabledWrap.className = "field inline";
+        enabledWrap.innerHTML = `<span><input type="checkbox" ${rule.enabled ? "checked" : ""}> aktiv</span>`;
+        enabledWrap.querySelector("input").addEventListener("change", (e) => {
+          rule.enabled = e.target.checked;
+          renderLog();
+        });
+        top.appendChild(patternInput);
+        top.appendChild(effectSelect);
+        top.appendChild(enabledWrap);
+
+        const meta = document.createElement("div");
+        meta.className = "rule-meta";
+        const caseLabel = document.createElement("label");
+        caseLabel.className = "field inline";
+        caseLabel.innerHTML = `<span><input type="checkbox" ${rule.caseInsensitive ? "checked" : ""}> Regex i</span>`;
+        caseLabel.querySelector("input").addEventListener("change", (e) => {
+          rule.caseInsensitive = e.target.checked;
+          compileRule(rule);
+          renderRules();
+          renderLog();
+        });
+        meta.appendChild(caseLabel);
+        if (rule.autoGenerated) {
+          const badge = document.createElement("span");
+          badge.className = "badge";
+          badge.textContent = "auto: " + rule.label;
+          meta.appendChild(badge);
+        }
+        if (rule.error) {
+          const err = document.createElement("span");
+          err.className = "badge";
+          err.style.background = "#fee2e2";
+          err.style.color = "#991b1b";
+          err.style.borderColor = "#fecaca";
+          err.textContent = "Regex-Fehler";
+          meta.appendChild(err);
+        }
+
+        const styleRow = document.createElement("div");
+        styleRow.className = "rule-style-row";
+        if (rule.effect === "mark_match" || rule.effect === "mark_line") {
+          const modeSelect = document.createElement("select");
+          modeSelect.innerHTML = `
+            <option value="match">Nur Fundstelle</option>
+            <option value="line">Ganze Zeile</option>
+          `;
+          modeSelect.value = rule.style.mode;
+          modeSelect.addEventListener("change", () => {
+            rule.style.mode = modeSelect.value;
+            renderLog();
+          });
+          const textColor = document.createElement("input");
+          textColor.type = "color";
+          textColor.value = rule.style.textColor;
+          textColor.addEventListener("input", () => {
+            rule.style.textColor = textColor.value;
+            renderRules();
+            renderLog();
+          });
+          const bgColor = document.createElement("input");
+          bgColor.type = "color";
+          bgColor.value = rule.style.backgroundColor;
+          bgColor.addEventListener("input", () => {
+            rule.style.backgroundColor = bgColor.value;
+            renderRules();
+            renderLog();
+          });
+          const opacity = document.createElement("input");
+          opacity.type = "range";
+          opacity.min = "10";
+          opacity.max = "100";
+          opacity.value = String(Math.round(rule.style.opacity * 100));
+          opacity.addEventListener("input", () => {
+            rule.style.opacity = Number(opacity.value) / 100;
+            renderRules();
+            renderLog();
+          });
+          const removeBtn = document.createElement("button");
+          removeBtn.textContent = "Entfernen";
+          removeBtn.addEventListener("click", () => {
+            const idx = rules.findIndex(r => r.id === rule.id);
+            if (idx >= 0) rules.splice(idx, 1);
+            renderRules();
+            renderLog();
+          });
+          styleRow.appendChild(modeSelect);
+          styleRow.appendChild(textColor);
+          styleRow.appendChild(bgColor);
+          styleRow.appendChild(opacity);
+          styleRow.appendChild(removeBtn);
+        } else {
+          const removeBtn = document.createElement("button");
+          removeBtn.textContent = "Entfernen";
+          removeBtn.addEventListener("click", () => {
+            const idx = rules.findIndex(r => r.id === rule.id);
+            if (idx >= 0) rules.splice(idx, 1);
+            renderRules();
+            renderLog();
+          });
+          styleRow.appendChild(document.createElement("div"));
+          styleRow.appendChild(document.createElement("div"));
+          styleRow.appendChild(document.createElement("div"));
+          styleRow.appendChild(document.createElement("div"));
+          styleRow.appendChild(removeBtn);
+        }
+
+        const preview = document.createElement("div");
+        preview.className = "rule-preview";
+        preview.textContent = buildRulePreview(rule);
+        if (rule.effect === "mark_match" || rule.effect === "mark_line") {
+          preview.style.color = rule.style.textColor;
+          preview.style.background = rgbaFromHex(rule.style.backgroundColor, rule.style.opacity);
+        }
+
+        item.appendChild(top);
+        item.appendChild(meta);
+        item.appendChild(styleRow);
+        item.appendChild(preview);
+        rulesListEl.appendChild(item);
+      });
+    }
+
+    function buildLineHtml(line) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "log-line";
+      if (line.startsWith("[TX]") || line.startsWith("[Import]") || line.startsWith("[Verbindungsfehler]")) {
+        wrapper.classList.add("system");
+      }
+      const evalResult = evaluateLine(line);
+      applyLineStyles(wrapper, evalResult.lineStyles.filter(r => r.style.mode === "line"));
+      const prefixMatch = line.match(/^(\[[^\]]+\])(.*)$/);
+      let prefixText = "";
+      let bodyText = line;
+      if (prefixMatch) {
+        prefixText = prefixMatch[1];
+        bodyText = prefixMatch[2];
+      }
+      if (prefixText) {
+        const prefix = document.createElement("span");
+        prefix.className = "log-prefix";
+        prefix.textContent = prefixText;
+        wrapper.appendChild(prefix);
+      }
+      renderLineWithMatchStyles(wrapper, bodyText, evalResult.matchStyles.filter(e => e.rule.style.mode === "match"));
+      return wrapper;
+    }
+
+    function renderLog() {
+      const completedVisible = completedLines.filter(line => evaluateLine(line).visible);
+      const currentLine = currentLineChars.join("");
+      const currentVisible = currentLine && evaluateLine(currentLine).visible ? currentLine : "";
+      logEl.innerHTML = "";
+      for (const line of completedVisible) logEl.appendChild(buildLineHtml(line));
+      if (currentVisible) logEl.appendChild(buildLineHtml(currentVisible));
+      logEl.scrollTop = logEl.scrollHeight;
+      updateFilterState();
+      updateVisibleState();
+    }
+
+    function pushCompletedLine(line) {
+      completedLines.push(line);
+      observeAutoPrefix(line);
+      if (completedLines.length > MAX_LINES) completedLines.shift();
+    }
+
+    function appendSystemLine(text) {
+      pushCompletedLine(text);
+      currentLineChars = [];
+      cursorPos = 0;
+      if (!isPaused) renderLog();
+    }
+
+    function clearLog() {
+      completedLines = [];
+      currentLineChars = [];
+      cursorPos = 0;
+      if (currentSourceMode === "serial") {
+        serialCompletedLines = [];
+        serialCurrentLineChars = [];
+        serialCursorPos = 0;
+      }
+      prefixCounts.clear();
+      autoPrefixSet.clear();
+      rules.length = 0;
+      newRuleRegexEl.value = "";
+      newRuleStatusEl.textContent = "Automatische Regeln entstehen weiterhin aus häufigen Präfixen.";
+      renderRules();
+      renderLog();
+    }
+
+    function processIncomingSerial(text) {
+      for (const ch of text) {
+        if (ch === "\r") {
+          cursorPos = 0;
+          continue;
+        }
+        if (ch === "\n") {
+          const line = currentLineChars.join("");
+          pushCompletedLine(line);
+          currentLineChars = [];
+          cursorPos = 0;
+          continue;
+        }
+        if (ch === "\b") {
+          if (cursorPos > 0) {
+            cursorPos--;
+            currentLineChars.splice(cursorPos, 1);
+          }
+          continue;
+        }
+        currentLineChars[cursorPos] = ch;
+        cursorPos++;
+      }
+      if (currentSourceMode === "serial") {
+        serialCompletedLines = [...completedLines];
+        serialCurrentLineChars = [...currentLineChars];
+        serialCursorPos = cursorPos;
+      }
+      if (!isPaused) renderLog();
+    }
+
+    function downloadFile(filename, content, mimeType) {
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function buildExportBaseName() {
+      const now = new Date();
+      const pad = (v) => String(v).padStart(2, "0");
+      const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+      return `serial_log_${stamp}`;
+    }
+
+    async function readSelectedTextFile() {
+      const file = importTxtInput.files && importTxtInput.files[0];
+      if (!file) {
+        appendSystemLine(`${ts()}[Import] Keine TXT-Datei ausgewählt.`);
+        return null;
+      }
+      importedFileName = file.name;
+      return await file.text();
+    }
+
+    function normaliseImportedTextToLines(text) {
+      const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+      return normalized.split("\n");
+    }
+
+    function loadTextIntoCurrentView(text) {
+      const lines = normaliseImportedTextToLines(text);
+      completedLines = lines.filter((_, idx) => idx < lines.length - 1 || lines[idx] !== "");
+      currentLineChars = [];
+      cursorPos = 0;
+      currentSourceMode = "imported";
+      updateSourceState();
+      rebuildAutoPrefixRulesFromCurrentLines();
+      renderLog();
+    }
+
+    function useTextAsRuleTemplate(text) {
+      const lines = normaliseImportedTextToLines(text);
+      for (const line of lines) observeAutoPrefix(line);
+      renderRules();
+      renderLog();
+      appendSystemLine(`${ts()}[Import] Regelvorlage übernommen${importedFileName ? ": " + importedFileName : "."}`);
+    }
+
+    function switchBackToSerialView() {
+      currentSourceMode = "serial";
+      completedLines = [...serialCompletedLines];
+      currentLineChars = [...serialCurrentLineChars];
+      cursorPos = serialCursorPos;
+      updateSourceState();
+      rebuildAutoPrefixRulesFromCurrentLines();
+      renderLog();
+    }
+
+    function hideSelectionToolbar() {
+      selectionToolbar.style.display = "none";
+      selectionText = "";
+    }
+
+    function showSelectionToolbar(rect) {
+      const text = window.getSelection().toString().trim();
+      if (!text || !logEl.contains(window.getSelection().anchorNode)) {
+        hideSelectionToolbar();
+        return;
+      }
+      selectionText = text;
+      selectionPreview.textContent = text;
+      selectionToolbar.style.display = "flex";
+      const top = Math.max(8, rect.top + window.scrollY - 54);
+      const left = Math.max(8, Math.min(rect.left + window.scrollX, window.innerWidth - 640));
+      selectionToolbar.style.top = top + "px";
+      selectionToolbar.style.left = left + "px";
+    }
+
+    function handleSelectionChange() {
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+        hideSelectionToolbar();
+        return;
+      }
+      const range = selection.getRangeAt(0);
+      const container = range.commonAncestorContainer.nodeType === 1 ? range.commonAncestorContainer : range.commonAncestorContainer.parentElement;
+      if (!container || !logEl.contains(container)) {
+        hideSelectionToolbar();
+        return;
+      }
+      const rect = range.getBoundingClientRect();
+      showSelectionToolbar(rect);
+    }
+
+    function addSelectionRule(effect) {
+      const raw = selectionText.trim();
+      if (!raw) return;
+      setSuggestedSelectionRegex(raw, effect);
+      addRuleFromEditor();
+      hideSelectionToolbar();
+    }
+
+    async function connect() {
+      if (!("serial" in navigator)) {
+        alert("Web Serial wird in diesem Browser nicht unterstützt.");
+        return;
+      }
+      try {
+        port = await navigator.serial.requestPort();
+        await port.open({ baudRate: Number(baudEl.value), dataBits: 8, stopBits: 1, parity: "none", flowControl: "none" });
+        keepReading = true;
+        connectBtn.disabled = true;
+        disconnectBtn.disabled = false;
+        sendBtn.disabled = false;
+        sendEnterBtn.disabled = false;
+        updateConnectionState();
+        appendSystemLine(`${ts()}Verbunden.`);
+        const decoder = new TextDecoderStream();
+        port.readable.pipeTo(decoder.writable).catch(() => {});
+        reader = decoder.readable.getReader();
+        try {
+          while (keepReading) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            if (value) processIncomingSerial(value);
+          }
+        } catch (err) {
+          appendSystemLine(`${ts()}[Lesefehler] ${err.message}`);
+        }
+      } catch (err) {
+        appendSystemLine(`${ts()}[Verbindungsfehler] ${err.message}`);
+      }
+    }
+
+    async function sendRaw(text, clearInput = false) {
+      if (!port?.writable || currentSourceMode !== "serial") return;
+      const writer = port.writable.getWriter();
+      try {
+        const encoder = new TextEncoder();
+        await writer.write(encoder.encode(text));
+        appendSystemLine(`${ts()}[TX] "${debugVisible(text)}"`);
+        if (clearInput) sendTextEl.value = "";
+      } catch (err) {
+        appendSystemLine(`${ts()}[Sendefehler] ${err.message}`);
+      } finally {
+        writer.releaseLock();
+      }
+    }
+
+    async function sendText(text) { await sendRaw(text + getLineEndingBytes(), true); }
+    async function sendOnlyLineEnding() { await sendRaw(getLineEndingBytes(), false); }
+
+    async function disconnect() {
+      keepReading = false;
+      try {
+        if (reader) { await reader.cancel(); reader.releaseLock(); reader = null; }
+      } catch {}
+      try {
+        if (port) { await port.close(); port = null; }
+      } catch {}
+      connectBtn.disabled = false;
+      disconnectBtn.disabled = true;
+      sendBtn.disabled = true;
+      sendEnterBtn.disabled = true;
+      updateConnectionState();
+      appendSystemLine(`${ts()}Getrennt.`);
+    }
+
+    sourceSettingsHeader.addEventListener("click", () => setCollapsed(sourceSettingsCard, !sourceSettingsCard.classList.contains("collapsed")));
+    toggleRuleEditorBtn.addEventListener("click", () => setCollapsed(ruleEditorCard, !ruleEditorCard.classList.contains("collapsed")));
+    rulesListHeader.addEventListener("click", () => {
+      const card = rulesListHeader.closest('.card');
+      setCollapsed(card, !card.classList.contains('collapsed'));
+    });
+
+    connectBtn.addEventListener("click", connect);
+    disconnectBtn.addEventListener("click", disconnect);
+    pauseBtn.addEventListener("click", () => { isPaused = !isPaused; updatePauseState(); if (!isPaused) renderLog(); });
+    defaultVisibilityModeEl.addEventListener("change", () => {
+      for (const rule of rules) if (rule.autoGenerated) rule.effect = defaultVisibilityModeEl.value === "show" ? "hide" : "show";
+      renderRules();
+      renderLog();
+    });
+    addRuleBtn.addEventListener("click", addRuleFromEditor);
+    exportFilteredTxtBtn.addEventListener("click", () => downloadFile(`${buildExportBaseName()}_visible.txt`, getVisibleLines(true).join("\n"), "text/plain;charset=utf-8"));
+    exportAllTxtBtn.addEventListener("click", () => downloadFile(`${buildExportBaseName()}_all.txt`, getAllLines(true).join("\n"), "text/plain;charset=utf-8"));
+    loadTxtAsLogBtn.addEventListener("click", async () => { const text = await readSelectedTextFile(); if (text !== null) loadTextIntoCurrentView(text); });
+    useTxtAsTemplateBtn.addEventListener("click", async () => { const text = await readSelectedTextFile(); if (text !== null) useTextAsRuleTemplate(text); });
+    returnToSerialBtn.addEventListener("click", switchBackToSerialView);
+    sendBtn.addEventListener("click", async () => { await sendText(sendTextEl.value); });
+    sendEnterBtn.addEventListener("click", async () => { await sendOnlyLineEnding(); });
+    sendTextEl.addEventListener("keydown", async (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        const text = sendTextEl.value;
+        if (text.length === 0) await sendOnlyLineEnding(); else await sendText(text);
+      }
+    });
+    document.querySelectorAll(".quick").forEach(btn => btn.addEventListener("click", async () => { await sendText(btn.dataset.cmd); }));
+    clearBtn.addEventListener("click", clearLog);
+    document.addEventListener("selectionchange", handleSelectionChange);
+    document.addEventListener("mousedown", (e) => { if (!selectionToolbar.contains(e.target)) hideSelectionToolbar(); });
+    selectionHideBtn.addEventListener("click", () => addSelectionRule("hide"));
+    selectionShowBtn.addEventListener("click", () => addSelectionRule("show"));
+    selectionMarkMatchBtn.addEventListener("click", () => addSelectionRule("mark_match"));
+    selectionMarkLineBtn.addEventListener("click", () => addSelectionRule("mark_line"));
+    selectionCloseBtn.addEventListener("click", hideSelectionToolbar);
+
+    setCollapsed(ruleEditorCard, true);
+    updateConnectionState();
+    updatePauseState();
+    updateSourceState();
+    updateFilterState();
+    updateVisibleState();
+    renderRules();
+    renderLog();
+  </script>
+</body>
+</html>

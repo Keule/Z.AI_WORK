@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Codex Task Prompt Buttons</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 1.5rem; max-width: 920px; }
+    fieldset { margin-bottom: 1rem; }
+    label { display: block; margin: 0.5rem 0 0.2rem; font-weight: 600; }
+    input { width: 100%; padding: 0.45rem; box-sizing: border-box; }
+    button { margin-right: 0.5rem; margin-top: 0.6rem; padding: 0.5rem 0.75rem; cursor: pointer; }
+    pre { background: #f5f5f5; padding: 1rem; white-space: pre-wrap; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Codex-Aufgabe: klickbare Prompt-Buttons</h1>
+  <p>
+    Pflicht-Onboarding Teil 1 ist fest integriert:
+    <code>README.md</code>, <code>docs/process/PLAN_AGENT.md</code>,
+    <code>docs/process/QUICKSTART_WORKFLOW.md</code>.
+  </p>
+
+  <fieldset>
+    <label for="taskId">Task-ID</label>
+    <input id="taskId" value="TASK-022" />
+
+    <label for="taskFile">Task-Datei</label>
+    <input id="taskFile" value="backlog/tasks/TASK-022-capabilities-compile-time-gating-und-onboarding-prompts.md" />
+  </fieldset>
+
+  <button id="copyPromptBtn" type="button">📋 Prompt kopieren</button>
+  <button id="renderPromptBtn" type="button">🔄 Prompt anzeigen</button>
+
+  <h2>Vorschau</h2>
+  <pre id="preview"></pre>
+
+  <script>
+    const onboarding = [
+      "Pflicht-Onboarding Teil 1 (vor der ersten Änderung vollständig lesen):",
+      "1) README.md (Agenten-Teil)",
+      "2) docs/process/PLAN_AGENT.md",
+      "3) docs/process/QUICKSTART_WORKFLOW.md"
+    ].join("\n");
+
+    function buildPrompt() {
+      const taskId = document.getElementById("taskId").value.trim();
+      const taskFile = document.getElementById("taskFile").value.trim();
+      return [
+        "Du bist in diesem Auftrag als KI-Entwickler tätig.",
+        "",
+        `Bearbeite ${taskId}:`,
+        taskFile,
+        "",
+        onboarding,
+        "",
+        "Danach:",
+        "- Lies backlog/README.md (Pflichtfelder/Konventionen/Validierung).",
+        `- Führe den Pre-Work-Check aus:`,
+        `  python3 tools/check_task_context.py --task-id ${taskId}`,
+        `- Arbeite ausschließlich im Branch task/${taskId}.`,
+        "- Implementiere die im Task beschriebenen Änderungen.",
+        "- Lege den Entwickler-Report an:",
+        `  reports/${taskId}/<dein-name>.md`,
+        "  (Template: templates/dev-report.md)",
+        "- Führe die im Task definierten Verifikationen aus.",
+        `- Committe Änderungen und erstelle einen PR gegen task/${taskId}.`
+      ].join("\n");
+    }
+
+    function renderPrompt() {
+      document.getElementById("preview").textContent = buildPrompt();
+    }
+
+    document.getElementById("renderPromptBtn").addEventListener("click", renderPrompt);
+    document.getElementById("copyPromptBtn").addEventListener("click", async () => {
+      await navigator.clipboard.writeText(buildPrompt());
+      renderPrompt();
+    });
+    renderPrompt();
+  </script>
+</body>
+</html>

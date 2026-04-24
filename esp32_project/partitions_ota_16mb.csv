@@ -1,0 +1,24 @@
+# AgSteer OTA Partition Table for ESP32-WROVER-E (16 MB Flash)
+#
+# HYBRID FACTORY + OTA layout (recommended by Espressif for production):
+#   - factory: initial firmware (boots even if otadata is empty/corrupt)
+#   - ota_0 / ota_1: OTA update slots (used after first OTA update)
+#   - If otadata is invalid -> bootloader falls back to factory
+#   - After successful OTA: bootloader uses otadata -> boots ota_0 or ota_1
+#
+# Layout (16 MB = 0x1000000):
+#   0x0000..0x8FFF   Bootloader + partition table     (36 KB)
+#   0x9000..0xCFFF   NVS                               (16 KB)
+#   0xD000..0xEFFF   OTA data (boot slot selector)     (8 KB)
+#   0x10000..0x40FFFF factory (initial app)            (4.00 MB)
+#   0x410000..0x80FFFF ota_0 (first OTA slot)          (4.00 MB)
+#   0x810000..0xC0FFFF ota_1 (second OTA slot)        (4.00 MB)
+#   0xC10000..0xFFFFFF spiffs / fatfs                 (3.94 MB)
+
+# Name,    Type, SubType,  Offset,   Size,      Flags
+nvs,       data, nvs,      0x9000,   0x4000,
+otadata,   data, ota,      0xD000,   0x2000,
+factory,   app,  factory,  0x10000,  0x400000,
+ota_0,     app,  ota_0,    0x410000, 0x400000,
+ota_1,     app,  ota_1,    0x810000, 0x400000,
+spiffs,    data, spiffs,   0xC10000, 0x3F0000,

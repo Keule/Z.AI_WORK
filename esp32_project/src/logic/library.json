@@ -1,0 +1,10 @@
+{
+  "name": "logic",
+  "description": "Platform-independent logic: IMU, PID, AOG protocol, network",
+  "keywords": "aog, pid, control, autosteer",
+  "dependencies": [
+    {
+      "name": "hal"
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+# TASK-010 HW-/Runtime-Error-Reporting
+
+- **ID**: TASK-010
+- **Titel**: Hardware- und Laufzeitfehler modellieren und via PGN 221 an AgIO senden
+- **Status**: open
+- **Priorität**: medium
+- **Komponenten**: `src/logic/modules.cpp`, `src/logic/hw_status.*`, net send path, error model
+- **Dependencies**: TASK-003
+- **Kontext/Problem**:
+  - Fehler werden bisher nicht konsistent über Startup und Runtime hinweg erfasst und übertragen.
+  - Für Diagnose im Feld braucht AgIO ein einheitliches, entprelltes Fehlersignal.
+- **Scope (in)**:
+  - Gemeinsames Fehlermodell für Startup-, Hardware- und Runtime-Fehler.
+  - Versandpfad über PGN 221 inkl. Rate-Limiting/Entprellung.
+  - Definierte Fehlercodes mit Zuordnung zu Hardware-/Runtime-Ursachen.
+- **Nicht-Scope (out)**:
+  - GUI-Änderungen in AgIO.
+  - Persistente Fehlerhistorie auf externem Storage.
+- **AC**:
+  - Startup- und Runtime-Fehler sind im gemeinsamen Fehlermodell definiert.
+  - Runtime-Fehler werden über PGN 221 an AgIO übertragen.
+  - Rate-Limiting/Entprellung verhindert Flooding.
+- **Verifikation/Test**:
+  - Simulierte Fehlerereignisse erzeugen erwartete PGN-221-Telegramme.
+  - Wiederholte Fehler führen nicht zu Netzwerk-Flooding.
+- **Owner**: firmware-team
+- **Links**:
+  - `docs/Handover2.md#8-offene-aufgaben--todos`
+  - `backlog/epics/EPIC-004-feature-expansion.md`
+- **delivery_mode**: firmware_only

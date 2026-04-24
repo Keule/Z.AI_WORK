@@ -1,0 +1,29 @@
+Du bist in der Rolle als KI-Entwickler mit der Aufgabe betraut, die Pinbelegung für den GNSS-Buildup verbindlich festzulegen und merge-fertig zu dokumentieren.
+
+- **ID**: TASK-019A
+- **Titel**: Pinbelegung für UM980/GNSS-Buildup und Console-Mirror festlegen
+- **Status**: done
+- **Priorität**: high
+- **Komponenten**: `boards/`, `include/`, `src/hal_esp32/`, UART-Pinmapping, Board-Dokumentation
+- **Dependencies**: TASK-019
+- **Scope**:
+  - Verbindliche Pinmatrix für UART1, UART2, Console-Mirror und GNSS-Leitungen (TX/RX, optional PPS/EN) definieren.
+  - Zielboard(s) und GPIO-Randbedingungen (Boot-Strapping, Input-only, Konfliktpins) transparent dokumentieren.
+  - Ablageort und Benennung so festlegen, dass Folge-Tasks 019B-019D ohne Interpretationsspielraum umsetzen können.
+- **Nicht-Scope**:
+  - Kein Firmware-Refactor der UART-Stacklogik.
+  - Keine vollständige Inbetriebnahme oder Feldvalidierung des GNSS-Stacks.
+- **AC**:
+  - Eine konsistente Pinbelegung liegt als task-referenziertes Artefakt vor und ist für alle relevanten UART-Rollen vollständig.
+  - Konflikte mit bestehenden Pinverwendungen sind dokumentiert und entweder aufgelöst oder als Blocker markiert.
+  - Folge-Tasks 019B-019D können ohne Rückfragen auf die Pinbelegung referenzieren.
+- **Verifikation/Test**:
+  - Review der Pinmatrix gegen bestehende Board-/HAL-Definitionen.
+  - Optionaler Build-/Static-Check bei Anpassung von Board-Konstanten.
+- **Owner**: ki-planer
+- **Links**:
+  - `backlog/epics/EPIC-004-feature-expansion.md`
+  - `backlog/tasks/TASK-019-integrationsplanung-zwei-um980.md`
+  - `docs/Handover2.md#8-offene-aufgaben--todos`
+- **delivery_mode**: firmware_only
+- **task_category**: feature_expansion

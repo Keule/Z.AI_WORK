@@ -1,0 +1,24 @@
+# AgSteer OTA Partition Table for LilyGO T-ETH-Lite-S3 (16 MB Flash)
+#
+# HYBRID FACTORY + OTA layout (recommended by Espressif for production):
+#   - factory: initial firmware (boots even if otadata is empty/corrupt)
+#   - ota_0 / ota_1: OTA update slots (used after first OTA update)
+#   - If otadata is invalid → bootloader falls back to factory
+#   - After successful OTA: bootloader uses otadata → boots ota_0 or ota_1
+#
+# Layout (16 MB = 0x1000000):
+#   0x0000..0x8FFF   Bootloader + partition table     (36 KB)
+#   0x9000..0xCFFF   NVS                               (16 KB)
+#   0xD000..0xEFFF   OTA data (boot slot selector)     (8 KB)
+#   0x10000..0x3CFFFF factory (initial app)            (3.75 MB)
+#   0x3D0000..0x78FFFF ota_0 (first OTA slot)          (3.75 MB)
+#   0x790000..0xB4FFFF ota_1 (second OTA slot)        (3.75 MB)
+#   0xB50000..0xFFFFFF spiffs / fatfs                 (~4.75 MB)
+
+# Name,    Type, SubType,  Offset,   Size,      Flags
+nvs,       data, nvs,      0x9000,   0x4000,
+otadata,   data, ota,      0xD000,   0x2000,
+factory,   app,  factory,  0x10000,  0x3C0000,
+ota_0,     app,  ota_0,    0x3D0000, 0x3C0000,
+ota_1,     app,  ota_1,    0x790000, 0x3C0000,
+spiffs,    data, spiffs,   0xB50000, 0x4B0000,

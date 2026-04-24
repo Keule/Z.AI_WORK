@@ -1,0 +1,14 @@
+{
+  "name": "hal_esp32",
+  "description": "ESP32-S3 HAL implementation (W5500, UART, SPI, FreeRTOS)",
+  "keywords": "hal, esp32, ethernet, spi",
+  "headers": "hal_impl.h",
+  "dependencies": [
+    {
+      "name": "hal"
+    },
+    {
+      "name": "Ethernet3"
+    }
+  ]
+}

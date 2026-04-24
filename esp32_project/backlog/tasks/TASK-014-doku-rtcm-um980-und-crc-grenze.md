@@ -1,0 +1,32 @@
+# TASK-014 Doku-Update RTCM/UM980 + CRC-Grenze
+
+- **ID**: TASK-014
+- **Titel**: README-, Prozess- und Architekturhinweise für RTCM/UM980-Validierung nachziehen (inkl. CRC-Grenzhinweis)
+- **Status**: open
+- **Priorität**: medium
+- **Komponenten**: `README.md`, `docs/process/`, Architekturübersichten in `docs/`, Protokolldokumentation
+- **Dependencies**: TASK-013
+- **Kontext/Problem**:
+  - Wenn die RTCM-zu-UM980-Validierung und PGN-214-Bewertung umgesetzt werden, müssen Betriebswissen und Testablauf zentral dokumentiert sein.
+  - Gleichzeitig muss klar bleiben, dass die bestehende CRC-Grenze unverändert gilt (Discovery-Pfad vs. Core-PGN-Pfad), um Fehlinterpretationen bei Diagnose/Weiterentwicklung zu vermeiden.
+- **Scope (in)**:
+  - README um den validierten RTCM-Datenpfad AgIO (UDP) → Bridge (UART) → UM980 ergänzen (nur falls durch TASK-013 neue Erkenntnisse/Bedienhinweise entstehen).
+  - Prozessdoku um reproduzierbaren Hardware-Validierungsablauf inkl. Testmatrix-Referenz ergänzen.
+  - Architektur-/Protokollhinweise für PGN 214 (Qualität/Age) aktualisieren, falls Feldsemantik oder Beobachtungsregeln präzisiert wurden.
+  - Expliziten Hinweis aufnehmen: CRC-Handling bleibt unverändert — Discovery-PGNs mit bestehender Ausnahmebehandlung, Core-PGNs weiterhin strikt CRC-validiert.
+- **Nicht-Scope (out)**:
+  - Änderung der CRC-Implementierung selbst.
+  - Neue Produkt-/Marketingdokumentation.
+- **AC**:
+  - Relevante Doku-Orte (`README`/Prozess/Architektur) sind aktualisiert oder es ist explizit dokumentiert, warum kein Update nötig war.
+  - Der Hinweis auf die unveränderte CRC-Grenze (Discovery vs Core) ist eindeutig und an mindestens einer zentralen Stelle referenzierbar.
+  - Hardware-Validierungsschritte und erwartete Artefakte (Logs, Metriken, Bewertung) sind für Dritte nachvollziehbar beschrieben.
+- **Verifikation/Test**:
+  - Dokumenten-Review mit Checkliste auf Vollständigkeit und Konsistenz.
+  - Stichprobe: Eine zweite Person kann anhand der Doku den Validierungsablauf ohne implizites Vorwissen nachstellen.
+- **Owner**: platform-team
+- **Links**:
+  - `backlog/tasks/TASK-013-rtcm-zu-um980-validierung.md`
+  - `backlog/tasks/TASK-012-doku-architekturpflege.md`
+  - `docs/Handover2.md#7-crc-verhalten-discoverymanagement-pgns`
+- **delivery_mode**: firmware_only

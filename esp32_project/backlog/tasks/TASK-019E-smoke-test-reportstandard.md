@@ -1,0 +1,30 @@
+Du bist in der Rolle als KI-Entwickler mit der Aufgabe betraut, einen verbindlichen Smoke-Test-Reportstandard für den GNSS-Buildup merge-fertig zu definieren.
+
+- **ID**: TASK-019E
+- **Titel**: Smoke-Test-Reportstandard für GNSS-Buildup festlegen
+- **Status**: done
+- **Priorität**: medium
+- **Komponenten**: `templates/`, `reports/`, Test-/Validierungsdokumentation
+- **Dependencies**: TASK-019B, TASK-019C, TASK-019D
+- **Scope**:
+  - Einheitliche Reportstruktur für Bringup-Smoke-Tests festlegen (Setup, Firmwarestand, Logs, Befunde, Verdict).
+  - Minimalanforderungen an Evidenz (Log-Auszug, Build-Environment, Datum/Board/Pinmap-Referenz) definieren.
+  - Übergabeformat für Reviewer/Mensch inkl. Blocker- und Follow-up-Sektion standardisieren.
+- **Nicht-Scope**:
+  - Kein Ersatz für vollständige Feldtestprotokolle.
+  - Keine Automatisierung der Report-Generierung.
+- **AC**:
+  - Reportstandard ist als wiederverwendbares Format für Folgearbeiten dokumentiert.
+  - Pflichtangaben und Erfolgskriterien sind klar und prüfbar beschrieben.
+  - Referenz zu Onboarding/Workflow-Dokumenten ist enthalten.
+- **Verifikation/Test**:
+  - Review gegen `templates/dev-report.md` und Workflow-Vorgaben.
+  - Trockenlauf mit einem Beispielreport ohne inhaltliche Lücken.
+- **Owner**: ki-planer
+- **Links**:
+  - `backlog/epics/EPIC-004-feature-expansion.md`
+  - `docs/process/QUICKSTART_WORKFLOW.md`
+  - `templates/dev-report.md`
+  - `backlog/tasks/TASK-019D-uart1-uart2-console-mirror.md`
+- **delivery_mode**: firmware_only
+- **task_category**: feature_expansion

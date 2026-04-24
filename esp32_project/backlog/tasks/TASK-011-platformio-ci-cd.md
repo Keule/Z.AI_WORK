@@ -1,0 +1,29 @@
+# TASK-011 CI-/Build-Checks
+
+- **ID**: TASK-011
+- **Titel**: Automatischen PlatformIO Build-Check bei Push/PR etablieren
+- **Status**: open
+- **Priorität**: medium
+- **Komponenten**: `.github/workflows`, `platformio.ini`, Build-Pipeline
+- **Dependencies**: none
+- **Kontext/Problem**:
+  - Build-Fehler werden derzeit zu spät erkannt, da kein verpflichtender CI-Build-Check für jeden Commit existiert.
+- **Scope (in)**:
+  - CI-Workflow mit Trigger auf Push und Pull Request.
+  - Mindestens ein reproduzierbarer `pio run`-Build im Workflow.
+  - Sichtbares Build-Ergebnis als PR-Check.
+- **Nicht-Scope (out)**:
+  - Vollständige Hardware-in-the-Loop-Testautomatisierung.
+  - Release-Automation inkl. Artefakt-Deployment.
+- **AC**:
+  - CI-Workflow startet bei Push/PR.
+  - Mindestens ein `pio run` Build wird automatisiert ausgeführt.
+  - Build-Ergebnis ist in PR-Checks sichtbar.
+- **Verifikation/Test**:
+  - Workflow-Datei validiert und einmal testweise in CI ausgeführt.
+  - Fehlender Build wird in CI zuverlässig als Fehler markiert.
+- **Owner**: platform-team
+- **Links**:
+  - `docs/Handover2.md#8-offene-aufgaben--todos`
+  - `backlog/epics/EPIC-003-platform-and-reuse.md`
+- **delivery_mode**: firmware_only

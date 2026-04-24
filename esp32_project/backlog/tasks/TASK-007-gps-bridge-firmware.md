@@ -1,0 +1,48 @@
+# TASK-007 GPS-Bridge vorbereiten
+
+- **ID**: TASK-007
+- **Titel**: Basis für zweite ESP32-GPS-Bridge-Firmware (PGN 214) vorbereiten
+- **Status**: open
+- **Priorität**: medium
+- **Komponenten**: zweite firmware app, network stack, PGN-214 encoder, Build-Konfiguration
+- **Dependencies**: TASK-006
+- **Kontext/Problem**:
+  - Für eine entkoppelte GPS-Bridge fehlt ein belastbares Startgerüst inkl. Datenpfad und Build-Setup.
+  - Ohne vorbereitete Struktur ist eine iterative Inbetriebnahme auf Hardware aufwendig.
+- **Scope (in)**:
+  - Projekt-/Build-Skelett für die Bridge-Firmware anlegen.
+  - Eingangspfad für GPS-Daten definieren und an PGN-214-Encoder anbinden.
+  - UDP-Ausgabepfad zu AgIO konfigurierbar vorbereiten.
+  - Mapping-Regeln für UM980 → PGN-214 `fixQuality` und `age` definieren und dokumentieren.
+  - Thread-sichere Statusübernahme (Parser/State → Encoder) via `StateLock` festlegen.
+- **Nicht-Scope (out)**:
+  - Vollständige Serienreife inkl. Langzeit-Hardwaretests.
+  - Erweiterte Diagnose-/Monitoring-Features außerhalb des Basispfads.
+- **AC**:
+  - GPS-Daten werden empfangen und in PGN 214 konvertiert.
+  - `fixQuality`-Mapping ist eindeutig implementiert:
+    - `0` (none) → `0`
+    - `1` (GPS) → `1`
+    - `2` (DGPS) → `2`
+    - `4` (RTK Fix) → `4`
+    - `5` (RTK Float, falls Quelle vorhanden) → `5`
+    - Fallback ohne RTCM: keine RTK-/DGPS-Werte signalisieren (Degradierung auf GPS oder none).
+  - `age` ist einheitlich gemäß Kommentar in `src/logic/pgn_types.h` skaliert:
+    - Kodierung `Differential age ×100 [ms]`
+    - Sättigung auf `int16`-Grenzen
+    - Bei fehlendem RTCM wird `age=0` gesendet.
+  - RTK-Fix ist in AgIO über PGN-214 sichtbar (messbar über Frame-Decode).
+  - `age` steigt/fällt plausibel mit RTCM-Alter und entspricht der definierten Skalierung.
+  - Versand an AgIO über definierten UDP-Pfad erfolgt stabil.
+  - Basisintegrationstest mit AgIO erfolgreich.
+- **Verifikation/Test**:
+  - Reproduzierbarer Build der Bridge-Firmware.
+  - Kurzer End-to-End-Test (Input GPS -> PGN 214 -> UDP an AgIO) dokumentiert.
+  - Messkriterien:
+    - PGN-214 Byte 21 zeigt RTK Fix (`4`) bei aktivem RTCM/Fix.
+    - PGN-214 Byte 24-25 (`age`) folgt `age_ms * 100` innerhalb definierter Sättigungsgrenzen.
+- **Owner**: platform-team
+- **Links**:
+  - `docs/Handover2.md#8-offene-aufgaben--todos`
+  - `backlog/epics/EPIC-004-feature-expansion.md`
+- **delivery_mode**: mixed

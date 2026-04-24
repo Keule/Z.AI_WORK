@@ -1,0 +1,29 @@
+Du bist in der Rolle als KI-Entwickler mit der Aufgabe betraut, das UART1/2→Console-Mirroring für Bringup-Diagnostik merge-fertig aufzunehmen.
+
+- **ID**: TASK-019D
+- **Titel**: UART1/2 nach Console spiegeln (diagnostischer Mirror-Pfad)
+- **Status**: done
+- **Priorität**: medium
+- **Komponenten**: UART-Read/Write-Pfade, Logging-Ausgabe, Konfig-Flags für Mirror
+- **Dependencies**: TASK-019A, TASK-019C
+- **Scope**:
+  - Diagnostisches Spiegeln von UART1/UART2 auf Console im Bringup-Kontext definieren.
+  - Steuerbarkeit (an/aus, ggf. Sampling/Rate-Limit) und Performance-/Stabilitätsgrenzen festlegen.
+  - Sicherheits-/Datenschutzaspekte für Rohdatenlogs im Entwicklerkontext berücksichtigen.
+- **Nicht-Scope**:
+  - Kein permanentes Aktivieren des Mirrors in produktiven Builds.
+  - Keine Protokollparser-Erweiterung über Mirror-Ausgabe hinaus.
+- **AC**:
+  - Mirror-Verhalten ist eindeutig spezifiziert und nur in vorgesehenen Modi aktiv.
+  - Logging verursacht keine unkontrollierte Blockierung der Hauptdatenpfade.
+  - Aktivierungszustand ist im Startlog klar sichtbar.
+- **Verifikation/Test**:
+  - Bringup-Build mit aktiviertem Mirror.
+  - Smoke-Test: UART1/2-Daten erscheinen nachvollziehbar auf Console, inkl. dokumentiertem Beispiel.
+- **Owner**: ki-planer
+- **Links**:
+  - `backlog/epics/EPIC-004-feature-expansion.md`
+  - `backlog/tasks/TASK-019A-pinbelegung-um980-und-konsole.md`
+  - `backlog/tasks/TASK-019C-gnss-bringup-modus.md`
+- **delivery_mode**: mixed
+- **task_category**: feature_expansion

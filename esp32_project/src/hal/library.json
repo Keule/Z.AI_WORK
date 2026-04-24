@@ -1,0 +1,6 @@
+{
+  "name": "hal",
+  "description": "Hardware Abstraction Layer – pure C interface, no Arduino deps",
+  "keywords": "hal",
+  "headers": "hal.h"
+}

@@ -1,0 +1,29 @@
+# TASK-004 BNO085-Integration
+
+- **ID**: TASK-004
+- **Titel**: BNO085-Pfad auf echter Hardware integrieren und kalibrieren
+- **Status**: open
+- **Priorität**: medium
+- **Komponenten**: `src/logic/imu.*`, `src/hal_esp32/hal_bno085.cpp`, Kalibrierlogik
+- **Dependencies**: none
+- **Kontext/Problem**:
+  - BNO085 ist funktional vorhanden, aber für produktiven Betrieb fehlen abgesicherte Hardware-Validierung und belastbare Kalibrierabläufe.
+- **Scope (in)**:
+  - Robuste Initialisierung/Erkennung auf Zielhardware.
+  - Stabilisierung des Read-Pfads inkl. Plausibilisierung.
+  - Dokumentierter Kalibrierablauf für Heading und Roll-Offset.
+- **Nicht-Scope (out)**:
+  - Austausch des Sensors oder komplette Neuentwicklung des IMU-Stacks.
+- **AC**:
+  - IMU wird auf Zielhardware zuverlässig erkannt.
+  - `hal_imu_read()` liefert stabile, plausibilisierte Werte.
+  - Kalibrierungsablauf für Heading und Roll-Offset ist dokumentiert.
+  - Fehlverhalten/Timeouts werden sauber geloggt.
+- **Verifikation/Test**:
+  - Hardware-Testlauf mit reproduzierbaren Kalibrierwerten.
+  - Fehlerfälle (Sensor nicht vorhanden, Timeout) sind im Log nachvollziehbar.
+- **Owner**: firmware-team
+- **Links**:
+  - `docs/Handover2.md#8-offene-aufgaben--todos`
+  - `backlog/epics/EPIC-002-sensor-and-safety.md`
+- **delivery_mode**: hardware_required

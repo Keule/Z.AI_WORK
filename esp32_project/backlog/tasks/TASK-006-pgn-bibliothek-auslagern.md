@@ -1,0 +1,30 @@
+# TASK-006 PGN-Bibliothek auslagern
+
+- **ID**: TASK-006
+- **Titel**: PGN Codec/Types/Registry in wiederverwendbare Library extrahieren
+- **Status**: open
+- **Priorität**: medium
+- **Komponenten**: `src/logic/pgn_types.*`, `src/logic/pgn_codec.*`, `src/logic/pgn_registry.*`, `src/logic/modules.*`
+- **Dependencies**: TASK-003
+- **Kontext/Problem**:
+  - PGN-Logik ist derzeit eng an die Haupt-Firmware gekoppelt.
+  - Für Folgeprojekte (z. B. Bridge-Firmware) fehlt ein klarer Reuse-Baustein mit stabiler API.
+- **Scope (in)**:
+  - Extraktion von Types/Codec/Registry in eine dedizierte Library-Struktur.
+  - Bereinigung von Includes/Abhängigkeiten, sodass die Library standalone gebaut werden kann.
+  - Dokumentation der öffentlichen API inkl. Versionierungsregeln.
+- **Nicht-Scope (out)**:
+  - Funktionale Erweiterung bestehender PGNs.
+  - Protokolländerungen oder neue PGN-Definitionen.
+- **AC**:
+  - PGN-Code in separater Library strukturiert.
+  - Bestehende Firmware referenziert die Library ohne Funktionsverlust.
+  - API/Versionierung für Wiederverwendung dokumentiert.
+- **Verifikation/Test**:
+  - Host-Build und Firmware-Build laufen mit eingebundener Library erfolgreich.
+  - Bestehende Smoke-Tests für PGN-Encode/Decode bleiben grün.
+- **Owner**: platform-team
+- **Links**:
+  - `docs/Handover2.md#8-offene-aufgaben--todos`
+  - `backlog/epics/EPIC-003-platform-and-reuse.md`
+- **delivery_mode**: firmware_only

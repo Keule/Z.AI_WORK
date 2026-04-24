@@ -1,0 +1,29 @@
+Du bist in der Rolle als KI-Entwickler mit der Aufgabe betraut, einen GNSS-Bringup-Modus mit klarer Aktivierung, Telemetrie und Fallback-Verhalten merge-fertig vorzubereiten.
+
+- **ID**: TASK-019C
+- **Titel**: GNSS-Bringup-Modus für kontrollierte Initialisierung implementierbar spezifizieren
+- **Status**: done
+- **Priorität**: high
+- **Komponenten**: `src/`, `include/`, GNSS-Init-Pfade, Logging/State-Handling
+- **Dependencies**: TASK-019B
+- **Scope**:
+  - Aktivierungsmechanismus für Bringup-Modus über Build-Flag/Define festlegen.
+  - Initialisierungssequenz für GNSS/UART inklusive Diagnoselogs und Timeout-Strategie spezifizieren.
+  - Verhalten beim Wechsel zurück in Normalmodus definieren.
+- **Nicht-Scope**:
+  - Kein vollständiges Feature-Tuning für produktiven Dauerbetrieb.
+  - Keine Erweiterung des PGN-Protokollumfangs über notwendige Diagnostik hinaus.
+- **AC**:
+  - Bringup-Modus ist eindeutig aktivierbar und gegenüber Standardmodus abgegrenzt.
+  - Diagnoseinformationen decken mindestens Init-Start, Port-Status, GNSS-Fix-Status und Fehlerpfade ab.
+  - Fallback-/Abbruchverhalten ist definiert und reproduzierbar testbar.
+- **Verifikation/Test**:
+  - Build im `gnss_buildup`-Environment.
+  - Logbasierter Smoke-Test mit dokumentiertem Soll-Logbild.
+- **Owner**: ki-planer
+- **Links**:
+  - `backlog/epics/EPIC-004-feature-expansion.md`
+  - `backlog/tasks/TASK-019B-platformio-environment-gnss-buildup.md`
+  - `backlog/tasks/TASK-019-integrationsplanung-zwei-um980.md`
+- **delivery_mode**: mixed
+- **task_category**: feature_expansion

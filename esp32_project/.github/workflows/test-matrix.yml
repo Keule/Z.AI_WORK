@@ -1,0 +1,62 @@
+name: Test Matrix
+
+on:
+  push:
+    paths:
+      - "src/**"
+      - "include/**"
+      - "lib/**"
+      - "boards/**"
+      - "tools/**"
+      - "platformio.ini"
+      - "auto_version.py"
+      - "partitions_ota.csv"
+      - ".github/workflows/test-matrix.yml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "include/**"
+      - "lib/**"
+      - "boards/**"
+      - "tools/**"
+      - "platformio.ini"
+      - "auto_version.py"
+      - "partitions_ota.csv"
+      - ".github/workflows/test-matrix.yml"
+
+jobs:
+  build-profiles:
+    name: Build ${{ matrix.profile }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        profile:
+          - profile_comm_only
+          - profile_sensor_front
+          - profile_actor_rear
+          - profile_full_steer
+          # Reserved for future expansion
+          # - profile_gnss_machine
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install PlatformIO
+        run: pip install platformio
+      - name: Build profile
+        run: pio run -e ${{ matrix.profile }}
+
+  smoke-matrix:
+    name: Smoke Matrix (Discovery/PGN/Timing)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run host smoke matrix
+        env:
+          SKIP_PROFILE_BUILDS: "1"
+        run: python3 tools/run_test_matrix.py

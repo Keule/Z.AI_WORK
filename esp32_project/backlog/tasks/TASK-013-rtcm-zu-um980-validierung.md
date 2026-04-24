@@ -1,0 +1,49 @@
+# TASK-013 RTCM-zu-UM980 Hardware-Validierung (PGN 214)
+
+- **ID**: TASK-013
+- **Titel**: RTCM-Weiterleitung AgIO → UM980 validieren und PGN-214-RTK-Verhalten verifizieren
+- **Status**: open
+- **Priorität**: high
+- **Komponenten**: GPS-Bridge, UDP-Ingress, UART-RTCM-Weiterleitung, PGN-214-Encoder/Telemetry, Testaufbau mit AgIO + UM980
+- **Dependencies**: TASK-007
+- **Kontext/Problem**:
+  - Für den geplanten RTK-Betrieb fehlt ein belastbarer Nachweis, dass RTCM-Korrekturdaten Ende-zu-Ende von AgIO bis in den UM980 gelangen.
+  - Ohne Messkriterien für RTK-Fix und Age-Signal in PGN 214 bleibt unklar, ob die Bridge unter realen Bedingungen spezifikationskonform degradiert.
+- **Scope (in)**:
+  - Hardwarevalidierung mit realem UM980 und AgIO in einem reproduzierbaren Testaufbau.
+  - Verifikation des Datenpfads: AgIO sendet RTCM per UDP, Bridge leitet RTCM über UART an UM980 weiter.
+  - Beobachtung und Protokollierung des RTK-Status/Age-Verhaltens aus PGN 214 inkl. Degradationsszenarien bei RTCM-Ausfall.
+  - Erstellung und Durchführung einer Testmatrix mit Positiv- und Negativfällen.
+- **Nicht-Scope (out)**:
+  - Redesign der PGN-214-Payloadstruktur.
+  - Änderung der CRC-Grenze zwischen Discovery- und Core-PGNs.
+  - Serien-/Feldvalidierung über Langzeitbetrieb außerhalb definierter Testfenster.
+- **Testmatrix**:
+  - **TC1 (Baseline-Fix):**
+    - Setup: AgIO sendet kontinuierlich gültige RTCM-Korrekturen via UDP; Bridge-UART an UM980 aktiv; GNSS-Sichtbedingungen gemäß Testprotokoll erfüllt.
+    - Erwartung: UM980 erreicht RTK Fix innerhalb des Zielzeitfensters; PGN 214 meldet konsistenten Qualitätsstatus und niedriges Age.
+  - **TC2 (Reacquire):**
+    - Setup: RTCM für 60 s unterbrechen, danach wieder zuschalten.
+    - Erwartung: Qualitätsstatus degradiert während Ausfall; Age steigt monotonic/plausibel; nach Wiederanlauf erneuter Übergang zu RTK Fix.
+  - **TC3 (Jitter/Loss):**
+    - Setup: UDP-RTCM mit kontrolliertem Paketverlust/Jitter (z. B. 5–10 % Drop, Burst-Loss).
+    - Erwartung: Kein Firmware-Deadlock; Qualitäts- und Age-Verhalten folgen Spezifikation, inkl. nachvollziehbarer Zwischenzustände.
+  - **TC4 (Invalid RTCM):**
+    - Setup: ungültige/inkompatible RTCM-Sequenzen einspeisen.
+    - Erwartung: Kein falscher RTK-Fix; Age/Qualität bleiben plausibel und degradieren statt fälschlich zu stabilisieren.
+- **AC**:
+  - UM980 erreicht unter definierten Bedingungen (TC1) einen RTK-Fix innerhalb von maximal 180 s nach Start der gültigen RTCM-Zufuhr.
+  - Das Age-Feld in PGN 214 wird korrekt skaliert, mindestens einmal pro Sekunde aktualisiert und bleibt in allen Testfällen innerhalb plausibler Grenzen (kein negativer Wert, keine unrealistischen Sprünge > 10 s/s ohne korrespondierenden Ausfall).
+  - Bei RTCM-Ausfall (TC2/TC3) degradieren Qualitätsindikator und Age gemäß Spezifikation: Age steigt während Ausfallphase an, Qualitätsstufe fällt mindestens um eine Stufe ab bzw. verlässt RTK-Fix-Zustand.
+  - Nach Wiederherstellung gültiger RTCM-Daten wird in TC2 innerhalb von maximal 240 s erneut RTK-Fix erreicht oder ein reproduzierbar dokumentierter Hinderungsgrund ausgewiesen.
+  - Für alle Testfälle liegen Rohlogs (Zeitstempel, UDP-RTCM-Ingress, UART-Forwarding-Metriken, PGN-214-Felder) und eine zusammenfassende Auswertung vor.
+- **Verifikation/Test**:
+  - Hardware-Testdurchlauf gemäß Testmatrix mit protokollierter Umgebung (Ort, Antenne, Firmwarestand, AgIO-Konfiguration).
+  - Vergleich PGN-214-Telemetrie gegen erwartete Zustandsübergänge pro Testfall.
+  - Review der Messdaten durch mindestens eine zweite Person.
+- **Owner**: firmware-team
+- **Links**:
+  - `backlog/tasks/TASK-007-gps-bridge-firmware.md`
+  - `backlog/epics/EPIC-004-feature-expansion.md`
+  - `docs/Handover2.md#4-pgn-protokoll`
+- **delivery_mode**: hardware_required

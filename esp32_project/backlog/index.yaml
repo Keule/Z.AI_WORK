@@ -1,0 +1,723 @@
+version: 1
+
+enums:
+  status:
+    - open
+    - in_progress
+    - blocked
+    - done
+  priority:
+    - high
+    - medium
+    - low
+  delivery_mode:
+    - hardware_required
+    - firmware_only
+    - mixed
+  task_category:
+    - runtime_stability
+    - sensor_safety
+    - platform_reuse
+    - feature_expansion
+
+epics:
+  - id: EPIC-001
+    title: Runtime Stability
+    file: backlog/epics/EPIC-001-runtime-stability.md
+    task_ids:
+      - TASK-001
+      - TASK-002
+      - TASK-003
+      - TASK-029
+      - TASK-032
+      - TASK-044
+
+  - id: EPIC-002
+    title: Sensor and Safety Integration
+    file: backlog/epics/EPIC-002-sensor-and-safety.md
+    task_ids:
+      - TASK-004
+      - TASK-005
+
+  - id: EPIC-003
+    title: Platform and Reuse
+    file: backlog/epics/EPIC-003-platform-and-reuse.md
+    task_ids:
+      - TASK-006
+      - TASK-011
+      - TASK-012
+      - TASK-013
+      - TASK-014
+      - TASK-020
+      - TASK-021
+      - TASK-022
+      - TASK-023
+      - TASK-024
+      - TASK-026
+      - TASK-027
+      - TASK-028
+      - TASK-031
+      - TASK-033
+      - TASK-034
+      - TASK-035
+      - TASK-036
+      - TASK-037
+      - TASK-038
+      - TASK-040
+      - TASK-041
+      - TASK-046
+
+  - id: EPIC-004
+    title: Feature Expansion
+    file: backlog/epics/EPIC-004-feature-expansion.md
+    task_ids:
+      - TASK-007
+      - TASK-008
+      - TASK-009
+      - TASK-010
+      - TASK-014A
+      - TASK-015
+      - TASK-016
+      - TASK-017
+      - TASK-018
+      - TASK-019
+      - TASK-019A
+      - TASK-019B
+      - TASK-019C
+      - TASK-019D
+      - TASK-019E
+      - TASK-019F
+      - TASK-019G
+      - TASK-025
+      - TASK-030
+      - TASK-039
+      - TASK-042
+      - TASK-043
+
+tasks:
+  - id: TASK-001
+    title: Boot-Log mit aktuellem Firmware-Stand validieren
+    file: backlog/tasks/TASK-001-boot-log-validierung.md
+    epic_id: EPIC-001
+    status: open
+    priority: high
+    delivery_mode: hardware_required
+    task_category: runtime_stability
+    dependencies: []
+
+  - id: TASK-002
+    title: Temporäre `[DBG-*]` Hz-Logs entfernen oder auf DEBUG-Level setzen
+    file: backlog/tasks/TASK-002-dbg-marker-bereinigen.md
+    epic_id: EPIC-001
+    status: open
+    priority: high
+    delivery_mode: firmware_only
+    task_category: runtime_stability
+    dependencies:
+      - TASK-001
+
+  - id: TASK-003
+    title: Empfangene Steer-Config (PGN 251) funktional auf Hardware anwenden
+    file: backlog/tasks/TASK-003-pgn251-config-anwenden.md
+    epic_id: EPIC-001
+    status: open
+    priority: high
+    delivery_mode: mixed
+    task_category: runtime_stability
+    dependencies: []
+
+  - id: TASK-004
+    title: BNO085-Pfad auf echter Hardware integrieren und kalibrieren
+    file: backlog/tasks/TASK-004-bno085-integration-produktiv.md
+    epic_id: EPIC-002
+    status: open
+    priority: medium
+    delivery_mode: hardware_required
+    task_category: sensor_safety
+    dependencies: []
+
+  - id: TASK-005
+    title: Externen Hardware-Watchdog spezifizieren und integrieren
+    file: backlog/tasks/TASK-005-externer-hardware-watchdog.md
+    epic_id: EPIC-002
+    status: open
+    priority: medium
+    delivery_mode: mixed
+    task_category: sensor_safety
+    dependencies:
+      - TASK-001
+
+  - id: TASK-006
+    title: PGN Codec/Types/Registry in wiederverwendbare Library extrahieren
+    file: backlog/tasks/TASK-006-pgn-bibliothek-auslagern.md
+    epic_id: EPIC-003
+    status: open
+    priority: medium
+    delivery_mode: firmware_only
+    task_category: platform_reuse
+    dependencies:
+      - TASK-003
+
+  - id: TASK-007
+    title: Zweite ESP32-Firmware für GPS-Bridge (PGN 214) erstellen
+    file: backlog/tasks/TASK-007-gps-bridge-firmware.md
+    epic_id: EPIC-004
+    status: open
+    priority: low
+    delivery_mode: mixed
+    task_category: feature_expansion
+    dependencies:
+      - TASK-006
+
+  - id: TASK-008
+    title: PGN 182/183 für Abschnittssteuerung implementieren
+    file: backlog/tasks/TASK-008-section-control-pgn182-183.md
+    epic_id: EPIC-004
+    status: open
+    priority: low
+    delivery_mode: firmware_only
+    task_category: feature_expansion
+    dependencies:
+      - TASK-006
+
+  - id: TASK-009
+    title: PGN 100 (Corrected Position) für GPS-Out Geräte bereitstellen
+    file: backlog/tasks/TASK-009-nmea-output-pgn100.md
+    epic_id: EPIC-004
+    status: open
+    priority: low
+    delivery_mode: firmware_only
+    task_category: feature_expansion
+    dependencies:
+      - TASK-006
+
+  - id: TASK-010
+    title: Laufzeitfehler zusätzlich via PGN 221 an AgIO senden
+    file: backlog/tasks/TASK-010-runtime-fehler-reporting.md
+    epic_id: EPIC-004
+    status: open
+    priority: low
+    delivery_mode: firmware_only
+    task_category: feature_expansion
+    dependencies:
+      - TASK-003
+
+  - id: TASK-011
+    title: Automatischen PlatformIO Build-Check bei Push etablieren
+    file: backlog/tasks/TASK-011-platformio-ci-cd.md
+    epic_id: EPIC-003
+    status: open
+    priority: low
+    delivery_mode: firmware_only
+    task_category: platform_reuse
+    dependencies: []
+
+  - id: TASK-012
+    title: Technische Dokumentation und Architekturartefakte konsolidieren und aktuell halten
+    file: backlog/tasks/TASK-012-doku-architekturpflege.md
+    epic_id: EPIC-003
+    status: open
+    priority: medium
+    delivery_mode: firmware_only
+    task_category: platform_reuse
+    dependencies: []
+
+  - id: TASK-013
+    title: RTCM-Weiterleitung AgIO → UM980 validieren und PGN-214-RTK-Verhalten verifizieren
+    file: backlog/tasks/TASK-013-rtcm-zu-um980-validierung.md
+    epic_id: EPIC-004
+    status: open
+    priority: high
+    delivery_mode: hardware_required
+    task_category: feature_expansion
+    dependencies:
+      - TASK-007
+
+  - id: TASK-014
+    title: README-, Prozess- und Architekturhinweise für RTCM/UM980-Validierung nachziehen (inkl. CRC-Grenzhinweis)
+    file: backlog/tasks/TASK-014-doku-rtcm-um980-und-crc-grenze.md
+    epic_id: EPIC-003
+    status: open
+    priority: medium
+    delivery_mode: firmware_only
+    task_category: platform_reuse
+    dependencies:
+      - TASK-013
+
+  - id: TASK-014A
+    title: RTCM-Forwarding über GNSS-UART in der HAL implementieren
+    file: backlog/tasks/TASK-014-hal-gnss-rtcm-uart-forwarding.md
+    epic_id: EPIC-004
+    status: open
+    priority: medium
+    delivery_mode: firmware_only
+    task_category: feature_expansion
+    dependencies:
+      - TASK-013
+
+  - id: TASK-015
+    title: UDP-basierten RTCM-Empfang mit robuster Pufferung implementieren
+    file: backlog/tasks/TASK-015-udp-rtcm-receiver-und-buffering.md
+    epic_id: EPIC-004
+    status: open
+    priority: medium
+    delivery_mode: firmware_only
+    task_category: feature_expansion
+    dependencies:
+      - TASK-013
+
+  - id: TASK-016
+    title: PGN-214 um FixQuality/Age-Integration für RTCM-gestützte Korrekturdaten erweitern
+    file: backlog/tasks/TASK-016-pgn214-fixquality-age-integration.md
+    epic_id: EPIC-004
+    status: open
+    priority: medium
+    delivery_mode: firmware_only
+    task_category: feature_expansion
+    dependencies:
+      - TASK-013
+
+  - id: TASK-017
+    title: RTCM-Ende-zu-Ende Validierung mit AgIO und U-M980 durchführen
+    file: backlog/tasks/TASK-017-rtcm-validierung-agiou-m980.md
+    epic_id: EPIC-004
+    status: open
+    priority: medium
+    delivery_mode: hardware_required
+    task_category: feature_expansion
+    dependencies:
+      - TASK-014A
+      - TASK-015
+      - TASK-016
+
+  - id: TASK-018
+    title: RTCM-Forwarder dokumentieren und Handover-Artefakte ergänzen
+    file: backlog/tasks/TASK-018-doku-rtcm-forwarder-und-handover.md
+    epic_id: EPIC-004
+    status: open
+    priority: low
+    delivery_mode: firmware_only
+    task_category: feature_expansion
+    dependencies:
+      - TASK-014A
+      - TASK-015
+      - TASK-016
+      - TASK-017
+
+  - id: TASK-019
+    title: Integrationsplanung für zwei UM980-Module erstellen
+    file: backlog/tasks/TASK-019-integrationsplanung-zwei-um980.md
+    epic_id: EPIC-004
+    status: in_progress
+    priority: high
+    delivery_mode: mixed
+    task_category: feature_expansion
+    dependencies:
+      - TASK-013
+      - TASK-014A
+      - TASK-015
+      - TASK-017
+
+  - id: TASK-019A
+    title: Pinbelegung für UM980/GNSS-Buildup und Console-Mirror festlegen
+    file: backlog/tasks/TASK-019A-pinbelegung-um980-und-konsole.md
+    epic_id: EPIC-004
+    status: done
+    priority: high
+    delivery_mode: firmware_only
+    task_category: feature_expansion
+    dependencies:
+      - TASK-019
+
+  - id: TASK-019B
+    title: PlatformIO-Environment `gnss_buildup` für GNSS-Buildup hinzufügen
+    file: backlog/tasks/TASK-019B-platformio-environment-gnss-buildup.md
+    epic_id: EPIC-004
+    status: done
+    priority: high
+    delivery_mode: firmware_only
+    task_category: feature_expansion
+    dependencies:
+      - TASK-019A
+
+  - id: TASK-019C
+    title: GNSS-Bringup-Modus für kontrollierte Initialisierung implementierbar spezifizieren
+    file: backlog/tasks/TASK-019C-gnss-bringup-modus.md
+    epic_id: EPIC-004
+    status: done
+    priority: high
+    delivery_mode: mixed
+    task_category: feature_expansion
+    dependencies:
+      - TASK-019B
+
+  - id: TASK-019D
+    title: UART1/2 nach Console spiegeln (diagnostischer Mirror-Pfad)
+    file: backlog/tasks/TASK-019D-uart1-uart2-console-mirror.md
+    epic_id: EPIC-004
+    status: done
+    priority: medium
+    delivery_mode: mixed
+    task_category: feature_expansion
+    dependencies:
+      - TASK-019A
+      - TASK-019C
+
+  - id: TASK-019E
+    title: Smoke-Test-Reportstandard für GNSS-Buildup festlegen
+    file: backlog/tasks/TASK-019E-smoke-test-reportstandard.md
+    epic_id: EPIC-004
+    status: done
+    priority: medium
+    delivery_mode: firmware_only
+    task_category: feature_expansion
+    dependencies:
+      - TASK-019B
+      - TASK-019C
+      - TASK-019D
+
+  - id: TASK-019F
+    title: Dual-UM980 Failover-Logik für Primär/Sekundär-Betrieb umsetzen
+    file: backlog/tasks/TASK-019F-dual-um980-failover-logik.md
+    epic_id: EPIC-004
+    status: open
+    priority: high
+    delivery_mode: mixed
+    task_category: feature_expansion
+    dependencies:
+      - TASK-019C
+      - TASK-019D
+      - TASK-017
+      - TASK-043
+
+  - id: TASK-019G
+    title: Labor- und Feldvalidierung für Dual-UM980 inklusive Smoke-/Langlauftests
+    file: backlog/tasks/TASK-019G-dual-um980-labor-feldvalidierung.md
+    epic_id: EPIC-004
+    status: open
+    priority: high
+    delivery_mode: hardware_required
+    task_category: feature_expansion
+    dependencies:
+      - TASK-019E
+      - TASK-019F
+
+  - id: TASK-020
+    title: TFT_eSPI-Setup216 und LilyGO-T-ETH-Lite-ESP32 Treiber-Einbindung für reproduzierbare Builds planen
+    file: backlog/tasks/TASK-020-tft-espi-und-lilygo-eth-lite-treiber-integration-planen.md
+    epic_id: EPIC-003
+    status: open
+    priority: medium
+    delivery_mode: firmware_only
+    task_category: platform_reuse
+    dependencies:
+      - TASK-013
+
+  - id: TASK-021
+    title: KI-Planer soll in neuem Branch einen Umsetzungsplan für compile-time/runtime Capabilities und Pin-Zuweisung erstellen
+    file: backlog/tasks/TASK-021-planungsauftrag-capability-init-und-pin-zuweisung.md
+    epic_id: EPIC-003
+    status: done
+    priority: high
+    delivery_mode: firmware_only
+    task_category: platform_reuse
+    dependencies:
+      - TASK-020
+
+  - id: TASK-022
+    title: Compile-Time-Gating für zusätzliche SPI/UART-Capabilities umsetzen und Pflicht-Onboarding Teil 1 in klickbare Codex-Task-Prompts integrieren
+    file: backlog/tasks/TASK-022-capabilities-compile-time-gating-und-onboarding-prompts.md
+    epic_id: EPIC-003
+    status: done
+    priority: high
+    delivery_mode: firmware_only
+    task_category: platform_reuse
+    dependencies:
+      - TASK-021
+
+  - id: TASK-023
+    title: Zusätzliche SPI/UART-Capabilities nur bei Modulbedarf initialisieren und Onboarding-Compliance im Codex-Task-Promptpfad verifizieren
+    file: backlog/tasks/TASK-023-capabilities-boot-init-gating-und-onboarding-prompts.md
+    epic_id: EPIC-003
+    status: done
+    priority: high
+    delivery_mode: firmware_only
+    task_category: platform_reuse
+    dependencies:
+      - TASK-022
+
+  - id: TASK-024
+    title: Pin-Claims und Pin-Zuweisung pro Capability-Initialisierungspfad verbindlich und konfliktarm umsetzen
+    file: backlog/tasks/TASK-024-pin-claims-und-zuweisung-pro-init-pfad.md
+    epic_id: EPIC-003
+    status: done
+    priority: high
+    delivery_mode: firmware_only
+    task_category: platform_reuse
+    dependencies:
+      - TASK-023
+
+  - id: TASK-025
+    title: NTRIP-Client für Single-Base-Caster und konfigurierbare GNSS-Empfänger-Abstraktion implementieren
+    file: backlog/tasks/TASK-025-ntrip-client-und-gnss-receiver-abstraktion.md
+    epic_id: EPIC-004
+    status: done
+    priority: high
+    delivery_mode: firmware_only
+    task_category: feature_expansion
+    dependencies: []
+
+  - id: TASK-026
+    title: fw_config und Board-Profile restrukturieren — hardware_pins.h aufteilen
+    file: backlog/tasks/TASK-026-fw-config-und-board-profile-restrukturierung.md
+    epic_id: EPIC-003
+    status: done
+    priority: medium
+    delivery_mode: firmware_only
+    task_category: platform_reuse
+    dependencies: []
+
+  - id: TASK-027
+    title: Modul-System mit Runtime-Aktivierung/Deaktivierung, Pin-Gruppen und dreiwertigem Status
+    file: backlog/tasks/TASK-027-modul-system-mit-runtime-aktivierung-und-pin-claim-arbitrierung.md
+    epic_id: EPIC-003
+    status: done
+    priority: high
+    delivery_mode: firmware_only
+    task_category: platform_reuse
+    dependencies:
+      - TASK-026
+
+  - id: TASK-028
+    title: soft_config.h mit Nutzer-Defaults, dreiwertigem ModState und RuntimeConfig einführen
+    file: backlog/tasks/TASK-028-soft-config-mit-nutzer-defaults-und-runtime-konfiguration.md
+    epic_id: EPIC-003
+    status: done
+    priority: medium
+    delivery_mode: firmware_only
+    task_category: platform_reuse
+    dependencies:
+      - TASK-027
+
+  - id: TASK-029
+    title: maintTask für blocking Operationen einführen, SD-Logging auf PSRAM-Buffer umstellen
+    file: backlog/tasks/TASK-029-maintask-fuer-blocking-ops-und-psram-sd-logging.md
+    epic_id: EPIC-001
+    status: done
+    priority: high
+    delivery_mode: firmware_only
+    task_category: runtime_stability
+    dependencies:
+      - TASK-027
+
+  - id: TASK-030
+    title: TASK-025 NTRIP auf neues Modul-System und maintTask migrieren
+    file: backlog/tasks/TASK-030-task025-backlog-status-und-ntrip-architektur-anpassung.md
+    epic_id: EPIC-004
+    status: done
+    priority: medium
+    delivery_mode: firmware_only
+    task_category: feature_expansion
+    dependencies:
+      - TASK-027
+      - TASK-029
+
+  - id: TASK-031
+    title: Legacy HAL Pin-Claims mit MOD_*-Tags harmonisieren (Review-F1)
+    file: backlog/tasks/TASK-031-legacy-pin-claims-harmonisierung-mit-mod-tags.md
+    epic_id: EPIC-003
+    status: done
+    priority: high
+    delivery_mode: firmware_only
+    task_category: platform_reuse
+    dependencies:
+      - TASK-027
+
+  - id: TASK-032
+    title: NTRIP hwStatusSetFlag() Bug beheben — GNSS-Status fälschlich als Fehler (Review-F2)
+    file: backlog/tasks/TASK-032-ntrip-hwstatus-bug-gnss-falscher-fehler.md
+    epic_id: EPIC-001
+    status: done
+    priority: high
+    delivery_mode: firmware_only
+    task_category: runtime_stability
+    dependencies: []
+
+  - id: TASK-033
+    title: NTRIP-Credentials aus soft_config.h entfernen und dateibasiertes Laden implementieren (Review-F3)
+    file: backlog/tasks/TASK-033-ntrip-credentials-dateibasiertes-laden.md
+    epic_id: EPIC-003
+    status: done
+    priority: high
+    delivery_mode: firmware_only
+    task_category: platform_reuse
+    dependencies:
+      - TASK-028
+      - TASK-029
+
+  - id: TASK-034
+    title: GPIO-46 LOG_SWITCH_PIN verlegen und Profil umbenennen + NTRIP-GNSS-Dependency (Review-F4/F5/F6)
+    file: backlog/tasks/TASK-034-gpio46-logsw-pin-verlegen-profil-naming-ntrip-deps.md
+    epic_id: EPIC-003
+    status: open
+    priority: medium
+    delivery_mode: firmware_only
+    task_category: platform_reuse
+    dependencies:
+      - TASK-027
+
+  - id: TASK-035
+    title: sd_logger_esp32.cpp Dokumentation und Prozess-Konservierung (Review-F7)
+    file: backlog/tasks/TASK-035-sd-logger-doku-und-prozess-konservierung.md
+    epic_id: EPIC-003
+    status: done
+    priority: low
+    delivery_mode: firmware_only
+    task_category: platform_reuse
+    dependencies: []
+
+  - id: TASK-036
+    title: SD-Funktionalität als Modul aktivierbar machen und bei fehlender Karte beim Boot vollständig deaktivieren
+    file: backlog/tasks/TASK-036-sd-modul-boot-detect-und-hartes-gating.md
+    epic_id: EPIC-003
+    status: done
+    priority: high
+    delivery_mode: firmware_only
+    task_category: platform_reuse
+    dependencies:
+      - TASK-027
+      - TASK-028
+
+  - id: TASK-037
+    title: Basis-Task für einheitlichen Konfig-Framework-Rahmen vor NTRIP/UART/GNSS/Ethernet
+    file: backlog/tasks/TASK-037-basis-konfig-framework-rahmen-vor-feature-tasks.md
+    epic_id: EPIC-003
+    status: done
+    priority: high
+    delivery_mode: firmware_only
+    task_category: platform_reuse
+    dependencies: []
+
+  - id: TASK-038
+    title: Boot-Pfad analysieren und deterministischen Serial-Konfigmodus bei Safety-Pin LOW spezifizieren
+    file: backlog/tasks/TASK-038-boot-safety-pin-serial-konfigmodus.md
+    epic_id: EPIC-003
+    status: done
+    priority: high
+    delivery_mode: mixed
+    task_category: platform_reuse
+    dependencies:
+      - TASK-037
+      - TASK-022
+      - TASK-023
+      - TASK-028
+
+  - id: TASK-039
+    title: Ethernet-Netzwerkmodus und IP-Parameter im seriellen Konfigmodus konfigurierbar machen
+    file: backlog/tasks/TASK-039-ethernet-konfiguration-im-seriellen-konfigmodus.md
+    epic_id: EPIC-004
+    status: done
+    priority: high
+    delivery_mode: firmware_only
+    task_category: feature_expansion
+    dependencies:
+      - TASK-037
+      - TASK-038
+      - TASK-028
+      - TASK-030
+
+  - id: TASK-040
+    title: features.h aufräumen — Capabilities, Profile-Flags, Legacy-Aliase und Build-Modi streichen
+    file: backlog/tasks/TASK-040-features-h-aufraeumen-und-vereinfachen.md
+    epic_id: EPIC-003
+    status: done
+    priority: high
+    delivery_mode: firmware_only
+    task_category: platform_reuse
+    dependencies: []
+
+  - id: TASK-041
+    title: Konfigurierbare GNSS-Datenausgabe (Typen, Raten/Profile, Zielpfade) im Konfigmodus spezifizieren
+    file: backlog/tasks/TASK-041-gnss-datenkonfiguration-im-konfigmodus.md
+    epic_id: EPIC-004
+    status: done
+    priority: high
+    delivery_mode: mixed
+    task_category: feature_expansion
+    dependencies:
+      - TASK-037
+      - TASK-038
+      - TASK-009
+      - TASK-016
+      - TASK-017
+      - TASK-019
+      - TASK-043
+
+  - id: TASK-042
+    title: NTRIP-Konfigurationspfad (Konsole/Runtime/Persistenz) funktional und sicher spezifizieren
+    file: backlog/tasks/TASK-042-ntrip-konfiguration-funktional-und-sicher-spezifizieren.md
+    epic_id: EPIC-004
+    status: done
+    priority: high
+    delivery_mode: firmware_only
+    task_category: platform_reuse
+    dependencies:
+      - TASK-037
+      - TASK-038
+      - TASK-025
+      - TASK-033
+
+  - id: TASK-043
+    title: Planungs-Task für die Parametrisierung beider UM980-UARTs erstellen
+    file: backlog/tasks/TASK-043-planungs-task-parametrisierung-beider-um980-uarts.md
+    epic_id: EPIC-004
+    status: done
+    priority: high
+    delivery_mode: firmware_only
+    task_category: feature_expansion
+    dependencies:
+      - TASK-037
+      - TASK-038
+      - TASK-019A
+      - TASK-019C
+      - TASK-019D
+      - TASK-014
+      - TASK-017
+      
+  - id: TASK-044
+    title: Control-/Init-Pfade über Modulverfügbarkeit härten (fehlende Pins => kein Runtime-Zugriff)
+    file: backlog/tasks/TASK-044-runtime-gating-bei-fehlenden-pinzuweisungen.md
+    epic_id: EPIC-001
+    status: done
+    priority: high
+    delivery_mode: firmware_only
+    task_category: runtime_stability
+    dependencies:
+      - TASK-027
+      - TASK-036
+
+
+    # ---------------------------------------------------------------------------
+  # TASK-045: Task-Watchdog-Reset auf ESP32 Classic (2026-04-22)
+  # Ursprung: Beobachtung aus TASK-037 session — WDT nach ~30s
+  # ---------------------------------------------------------------------------
+
+  - id: TASK-045
+    title: Task-Watchdog-Reset auf ESP32 Classic (RMII Ethernet) analysieren und beheben
+    file: backlog/tasks/TASK-045-task-watchdog-reset-esp32-classic-analysieren-und-beheben.md
+    epic_id: EPIC-001
+    status: open
+    priority: high
+    delivery_mode: mixed
+    task_category: runtime_stability
+    dependencies: []
+
+  - id: TASK-046
+    title: "[#process-hygiene] Post-hoc Review und Backlog-Konservierung der Refactor-Welle"
+    file: backlog/tasks/TASK-046-process-hygiene-post-hoc-review-und-backlog-konservierung-refactor-welle.md
+    epic_id: EPIC-003
+    status: open
+    priority: high
+    delivery_mode: firmware_only
+    task_category: platform_reuse
+    dependencies: []

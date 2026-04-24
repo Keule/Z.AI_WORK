@@ -1,0 +1,30 @@
+# TASK-012 Doku-/Architekturpflege
+
+- **ID**: TASK-012
+- **Titel**: Technische Dokumentation und Architekturartefakte konsolidieren und aktuell halten
+- **Status**: open
+- **Priorität**: medium
+- **Komponenten**: `README.md`, `docs/`, ADRs, Protokoll-/Schnittstellendoku
+- **Dependencies**: none
+- **Kontext/Problem**:
+  - Architekturentscheidungen, Schnittstellen und Betriebswissen sind verteilt und teilweise inkonsistent.
+  - Das erschwert Onboarding, Fehleranalyse und planbare Weiterentwicklung.
+- **Scope (in)**:
+  - Architekturüberblick und Modulgrenzen im `docs/`-Bereich harmonisieren.
+  - ADR-Liste und Status aktualisieren.
+  - Pflege einer nachvollziehbaren Doku-Checkliste für neue Features/Breaking Changes.
+- **Nicht-Scope (out)**:
+  - Inhaltliche Neuentwicklung von Features.
+  - Marketing-/Produktdokumentation außerhalb der technischen Projektdoku.
+- **AC**:
+  - Architektur- und Schnittstellenübersicht ist aktuell und konsistent.
+  - Wichtige Entscheidungen sind als ADR referenzierbar dokumentiert.
+  - Doku-Checkliste ist definiert und im Team nutzbar.
+- **Verifikation/Test**:
+  - Dokumenten-Review durch mindestens eine weitere Person.
+  - Stichproben zeigen, dass Codepfade und Doku-Referenzen zusammenpassen.
+- **Owner**: platform-team
+- **Links**:
+  - `docs/Handover2.md#8-offene-aufgaben--todos`
+  - `backlog/epics/EPIC-003-platform-and-reuse.md`
+- **delivery_mode**: firmware_only

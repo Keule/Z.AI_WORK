@@ -1,0 +1,29 @@
+Du bist in der Rolle als KI-Entwickler mit der Aufgabe betraut, ein dediziertes PlatformIO-Environment `gnss_buildup` sauber zu definieren und merge-fertig einzuplanen.
+
+- **ID**: TASK-019B
+- **Titel**: PlatformIO-Environment `gnss_buildup` für GNSS-Buildup hinzufügen
+- **Status**: done
+- **Priorität**: high
+- **Komponenten**: `platformio.ini`, Build-Flags, optionale CI-/Build-Dokumentation
+- **Dependencies**: TASK-019A
+- **Scope**:
+  - Neues PlatformIO-Environment `gnss_buildup` mit klaren Build-Flags/Defines und Zielboard-Kontext vorsehen.
+  - Abgrenzung zu bestehenden Environments dokumentieren (keine Seiteneffekte für Standard-Builds).
+  - Erwartete Nutzung für Bringup/Smoke-Tests beschreiben.
+- **Nicht-Scope**:
+  - Keine vollständige CI-Integration über alle Pipelines hinweg.
+  - Kein automatisches Deployment/Flash-Workflow.
+- **AC**:
+  - `platformio.ini` enthält ein lauffähiges, klar dokumentiertes Environment `gnss_buildup`.
+  - Build-Parameter sind nachvollziehbar und kollidieren nicht mit produktiven Environments.
+  - Task 019C kann den Bringup-Modus über dieses Environment aktivieren.
+- **Verifikation/Test**:
+  - Lokaler `pio run -e gnss_buildup` Build (oder begründete Umgebungsabweichung dokumentiert).
+  - Diff-Review auf unbeabsichtigte Änderungen in anderen Environments.
+- **Owner**: ki-planer
+- **Links**:
+  - `backlog/epics/EPIC-004-feature-expansion.md`
+  - `backlog/tasks/TASK-019A-pinbelegung-um980-und-konsole.md`
+  - `backlog/tasks/TASK-019-integrationsplanung-zwei-um980.md`
+- **delivery_mode**: firmware_only
+- **task_category**: feature_expansion
