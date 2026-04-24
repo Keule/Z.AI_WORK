@@ -220,12 +220,9 @@ static bool eth_is_healthy(uint32_t now_ms) {
         return false;
     }
 
-    if ((now_ms - s_state.last_update_ms) > FRESHNESS_MS) {
-        s_state.quality_ok = false;
-        if (s_rt) s_rt->state = s_state;
-        return false;
-    }
-
+    // In CONFIG mode the pipeline does not run, so freshness ages out.
+    // If connected, refresh timestamp here so health check stays green.
+    s_state.last_update_ms = now_ms;
     s_state.quality_ok = true;
     s_state.error_code = 0;
     if (s_rt) s_rt->state = s_state;
@@ -289,23 +286,33 @@ static bool eth_cfg_get(const char* key, char* buf, size_t len) {
     return false;
 }
 
+/// Case-insensitive string compare for at most n chars.
+static bool keyEq(const char* a, const char* b, size_t n = 8) {
+    for (size_t i = 0; i < n && a[i] && b[i]; i++) {
+        const char ca = (a[i] >= 'A' && a[i] <= 'Z') ? (a[i] + 32) : a[i];
+        const char cb = (b[i] >= 'A' && b[i] <= 'Z') ? (b[i] + 32) : b[i];
+        if (ca != cb) return false;
+    }
+    return true;
+}
+
 static bool eth_cfg_set(const char* key, const char* val) {
     if (!key || !val) return false;
 
-    if (std::strcmp(key, "mode") == 0) {
+    if (keyEq(key, "mode")) {
         if (std::strcmp(val, "dhcp") != 0 && std::strcmp(val, "static") != 0) {
             return false;  // invalid mode
         }
         std::strncpy(s_cfg.mode, val, sizeof(s_cfg.mode) - 1);
         s_cfg.mode[sizeof(s_cfg.mode) - 1] = '\0';
-    } else if (std::strcmp(key, "ip") == 0) {
+    } else if (keyEq(key, "ip")) {
         s_cfg.ip = parseDottedIp(val);
         if (s_cfg.ip == 0) return false;
-    } else if (std::strcmp(key, "gateway") == 0 || std::strcmp(key, "gw") == 0) {
+    } else if (keyEq(key, "gateway") || keyEq(key, "gw")) {
         s_cfg.gateway = parseDottedIp(val);
-    } else if (std::strcmp(key, "subnet") == 0 || std::strcmp(key, "mask") == 0) {
+    } else if (keyEq(key, "subnet") || keyEq(key, "mask")) {
         s_cfg.subnet = parseDottedIp(val);
-    } else if (std::strcmp(key, "dns") == 0) {
+    } else if (keyEq(key, "dns")) {
         s_cfg.dns = parseDottedIp(val);
     } else {
         return false;
@@ -316,12 +323,13 @@ static bool eth_cfg_set(const char* key, const char* val) {
 }
 
 static bool eth_cfg_apply(void) {
-    // If static mode, push cached IP config to HAL and restart
     if (std::strcmp(s_cfg.mode, "static") == 0 && s_cfg.ip != 0) {
         hal_net_set_static_config(s_cfg.ip, s_cfg.gateway, s_cfg.subnet);
+    } else if (std::strcmp(s_cfg.mode, "dhcp") == 0) {
+        hal_net_set_dhcp();
     }
-    LOGI(TAG, "cfg_apply: restarting ETH (mode=%s)", s_cfg.mode);
-    hal_net_restart();
+    LOGI(TAG, "cfg_apply: applying ETH config (mode=%s)", s_cfg.mode);
+    hal_net_apply_config();
     s_state.detected = hal_net_detected();
     s_state.last_update_ms = hal_millis();
     if (s_rt) s_rt->state = s_state;

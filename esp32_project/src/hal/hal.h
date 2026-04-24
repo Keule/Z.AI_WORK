@@ -316,10 +316,19 @@ bool hal_net_is_connected(void);
 /// Check if W5500 chip was detected during init.
 bool hal_net_detected(void);
 
-/// Set static network parameters used for next restart.
+/// Set static network parameters (used by apply_config / next init).
 void hal_net_set_static_config(uint32_t ip, uint32_t gw, uint32_t subnet);
 
+/// Switch to DHCP mode (clears static IP config).
+void hal_net_set_dhcp(void);
+
+/// Re-apply IP config without restarting ETH driver.
+/// Static: calls ETH.config() + re-opens UDP sockets.
+/// DHCP: logs that reboot is required.
+void hal_net_apply_config(void);
+
 /// Restart Ethernet stack (blocking).
+/// NOTE: Crashes on RTL8201 — prefer hal_net_apply_config().
 bool hal_net_restart(void);
 
 /// Current IPv4 values (big-endian u32: a.b.c.d => 0xAABBCCDD).
