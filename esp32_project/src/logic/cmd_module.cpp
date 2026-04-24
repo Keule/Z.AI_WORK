@@ -194,8 +194,7 @@ static void cliModuleDebug(const char* name) {
 static void cliModuleBootShow(void) {
     const auto& cfg = softConfigGet();
     const uint16_t mask = cfg.module_boot_disabled;
-    s_cli_out->printf("Boot-disabled bitmask: 0x%04X (%u)
-", (unsigned)mask, (unsigned)mask);
+    s_cli_out->printf("Boot-disabled bitmask: 0x%04X (%u)\n", (unsigned)mask, (unsigned)mask);
     s_cli_out->println("Modules:");
     for (int i = 0; i < static_cast<int>(ModuleId::COUNT); i++) {
         const char* name = moduleIdToName(static_cast<ModuleId>(i));
