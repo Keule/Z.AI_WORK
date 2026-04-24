@@ -7,6 +7,7 @@
  */
 
 #include "mod_actuator.h"
+#include "mod_spi.h"
 #include "features.h"
 #include "hal/hal.h"
 
@@ -48,6 +49,8 @@ static bool mod_actuator_is_enabled(void) {
 
 static void mod_actuator_activate(void) {
     s_state = {};
+    // Register as SPI consumer BEFORE using SPI bus
+    spi_shared_add_consumer(ModuleId::ACTUATOR);
     hal_actuator_begin();
     s_state.detected = hal_actuator_detect();
     s_current_cmd = 0;
@@ -60,9 +63,11 @@ static void mod_actuator_activate(void) {
 }
 
 static void mod_actuator_deactivate(void) {
-    // No-Op: SPI bus is shared and managed by HAL.
+    // Unregister from SPI bus (may trigger mode switch or bus deinit)
+    spi_shared_remove_consumer(ModuleId::ACTUATOR);
     s_current_cmd = 0;
-    LOGI("ACT", "deactivated (SPI bus managed by HAL)");
+    s_state = {};
+    LOGI("ACT", "deactivated");
 }
 
 static bool mod_actuator_is_healthy(uint32_t /*now_ms*/) {

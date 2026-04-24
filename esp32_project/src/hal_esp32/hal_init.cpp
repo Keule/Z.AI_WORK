@@ -181,10 +181,17 @@ void hal_esp32_init_all(void) {
         return;
     }
     hal_esp32_common_boot_init();
+
+    // NOTE: sensor SPI bus is now managed by the SPI_SHARED module.
+    // The module system calls spi_shared_add_consumer() during module
+    // activation, which triggers hal_sensor_spi_init() on first consumer.
+    // Pin setup for devices is done by hal_xxx_begin() (called both here
+    // and in module activate — idempotent).
+
     #if FEAT_ENABLED(FEAT_COMPILED_IMU) || FEAT_ENABLED(FEAT_COMPILED_ADS) || FEAT_ENABLED(FEAT_COMPILED_ACT)
-    hal_sensor_spi_init();
+    hal_log("ESP32: sensor SPI deferred to module system (SPI_SHARED)");
     #else
-    hal_log("ESP32: sensor SPI init skipped (no IMU/ADS/ACT feature active)");
+    hal_log("ESP32: sensor SPI disabled (no IMU/ADS/ACT feature active)");
     #endif
 
     #if FEAT_ENABLED(FEAT_COMPILED_IMU)

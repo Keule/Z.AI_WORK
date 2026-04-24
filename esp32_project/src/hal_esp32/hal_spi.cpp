@@ -56,6 +56,11 @@ static const SpiClientConfig k_spi_cfg_act = {CS_ACT,       1000000, SPI_MODE0, 
 
 static SemaphoreHandle_t s_spi_bus_mutex = nullptr;
 
+/// Multi-client (shared) mode flag.
+/// false = DIRECT mode (1 consumer, no mutex, no other-CS deassert)
+/// true  = SHARED mode (2+ consumers, full arbitration)
+static bool s_multi_client = false;
+
 // ===================================================================
 // SPI Poll State and Telemetry
 // ===================================================================
@@ -193,25 +198,53 @@ static bool spiTransfer(SpiClient client, const uint8_t* tx, uint8_t* rx, size_t
     if (cfg.cs_pin < 0) return false;
 
     const uint32_t request_us = micros();
-    spiBeginCritical();
-    const uint32_t lock_us = micros();
 
-    if (CS_STEER_ANG >= 0) digitalWrite(CS_STEER_ANG, HIGH);
-    if (CS_IMU >= 0)       digitalWrite(CS_IMU, HIGH);
-    if (CS_ACT >= 0)       digitalWrite(CS_ACT, HIGH);
+    if (s_multi_client) {
+        // ============================================================
+        // SHARED MODE: full arbitration — mutex + all-CS deassert
+        // + begin/endTransaction per device (different SPI settings)
+        // ============================================================
+        spiBeginCritical();
+        const uint32_t lock_us = micros();
 
-    sensorSPI.beginTransaction(SPISettings(cfg.freq_hz, MSBFIRST, cfg.mode));
-    digitalWrite(cfg.cs_pin, LOW);
-    for (size_t i = 0; i < len; i++) {
-        const uint8_t v = sensorSPI.transfer(tx ? tx[i] : 0xFF);
-        if (rx) rx[i] = v;
+        // Deassert ALL CS pins to avoid ghost-driving
+        if (CS_STEER_ANG >= 0) digitalWrite(CS_STEER_ANG, HIGH);
+        if (CS_IMU >= 0)       digitalWrite(CS_IMU, HIGH);
+        if (CS_ACT >= 0)       digitalWrite(CS_ACT, HIGH);
+
+        sensorSPI.beginTransaction(SPISettings(cfg.freq_hz, MSBFIRST, cfg.mode));
+        digitalWrite(cfg.cs_pin, LOW);
+        for (size_t i = 0; i < len; i++) {
+            const uint8_t v = sensorSPI.transfer(tx ? tx[i] : 0xFF);
+            if (rx) rx[i] = v;
+        }
+        digitalWrite(cfg.cs_pin, HIGH);
+        sensorSPI.endTransaction();
+
+        spiEndCritical();
+        const uint32_t end_us = micros();
+        spiRecordTiming(client, request_us, lock_us, end_us);
+    } else {
+        // ============================================================
+        // DIRECT MODE: single consumer — no mutex, no other-CS
+        // deassert, just begin/endTransaction for SPI peripheral
+        // settings. Minimal overhead.
+        // ============================================================
+        const uint32_t lock_us = request_us;  // No lock latency in direct mode
+
+        sensorSPI.beginTransaction(SPISettings(cfg.freq_hz, MSBFIRST, cfg.mode));
+        digitalWrite(cfg.cs_pin, LOW);
+        for (size_t i = 0; i < len; i++) {
+            const uint8_t v = sensorSPI.transfer(tx ? tx[i] : 0xFF);
+            if (rx) rx[i] = v;
+        }
+        digitalWrite(cfg.cs_pin, HIGH);
+        sensorSPI.endTransaction();
+
+        const uint32_t end_us = micros();
+        spiRecordTiming(client, request_us, lock_us, end_us);
     }
-    digitalWrite(cfg.cs_pin, HIGH);
-    sensorSPI.endTransaction();
 
-    spiEndCritical();
-    const uint32_t end_us = micros();
-    spiRecordTiming(client, request_us, lock_us, end_us);
     return true;
 }
 
@@ -412,6 +445,18 @@ void hal_sensor_spi_get_telemetry(HalSpiTelemetry* out) {
     if (win_us > 0) {
         out->bus_utilization_pct = (100.0f * static_cast<float>(s_bus_tm.busy_us)) / static_cast<float>(win_us);
     }
+}
+
+void hal_sensor_spi_set_multi_client(bool multi_client) {
+    const bool old = s_multi_client;
+    s_multi_client = multi_client;
+    if (old != multi_client) {
+        hal_log("ESP32: SPI mode -> %s", multi_client ? "SHARED (multi-client)" : "DIRECT (single-client)");
+    }
+}
+
+bool hal_sensor_spi_is_multi_client(void) {
+    return s_multi_client;
 }
 
 void hal_imu_get_spi_info(HalImuSpiInfo* out) {

@@ -133,6 +133,14 @@ void hal_sensor_spi_reinit(void);
 /// Copy current SPI telemetry counters into @p out.
 void hal_sensor_spi_get_telemetry(HalSpiTelemetry* out);
 
+/// Switch between DIRECT (single-consumer, no mutex) and SHARED (multi-client) mode.
+/// In DIRECT mode: spiTransfer() skips mutex and other-CS deassertion.
+/// In SHARED mode: full arbitration with mutex + begin/endTransaction per device.
+void hal_sensor_spi_set_multi_client(bool multi_client);
+
+/// Query whether the bus is currently in multi-client (shared) mode.
+bool hal_sensor_spi_is_multi_client(void);
+
 // --- IMU (BNO085) ---
 
 /// Initialise IMU on SPI.

@@ -61,3 +61,48 @@ Stage Summary:
 - module debug XY now outputs full verbose diagnostic report in CLI (not just PASS/FAIL in log)
 - All 13 modules have meaningful diag_info output
 - Build: SUCCESS, RAM: 25.9%, Flash: 45.6%
+
+---
+Task ID: 4
+Agent: Main
+Task: Implement SPI_SHARED module — SPI as deactivatable module with auto DIRECT/SHARED mode
+
+Work Log:
+- Added ModuleId::SPI_SHARED to module_interface.h (before COUNT sentinel, now 14 modules)
+- Created mod_spi.h with consumer registration API:
+  - spi_shared_add_consumer(ModuleId) / spi_shared_remove_consumer(ModuleId)
+  - spi_shared_consumer_count(), spi_shared_is_initialized(), spi_shared_is_direct_mode()
+- Created mod_spi.cpp implementing full ModuleOps2 for SPI_SHARED:
+  - Consumer tracking via bitmask (bits correspond to ModuleId enum values)
+  - 1st consumer → hal_sensor_spi_init() in DIRECT mode (no mutex, no CS arbitration)
+  - 2nd+ consumer → switch to SHARED mode (full mutex + begin/endTransaction + CS deassert)
+  - Last consumer removed → hal_sensor_spi_deinit(), bus freed
+  - Going from 2→1 consumers → switch back to DIRECT mode
+  - Module auto-managed (not in boot_order, not user-activatable)
+  - Full diag_info() and debug() with SPI telemetry output
+- Modified hal_spi.cpp:
+  - Added s_multi_client flag controlling transfer behavior
+  - spiTransfer() has two code paths:
+    DIRECT: no mutex, no other-CS deassert, minimal overhead
+    SHARED: mutex + all-CS deassert + begin/endTransaction per device
+  - Added hal_sensor_spi_set_multi_client() and hal_sensor_spi_is_multi_client()
+- Modified hal.h: declared new SPI mode functions
+- Modified mod_imu.cpp, mod_was.cpp, mod_actuator.cpp:
+  - activate() calls spi_shared_add_consumer() BEFORE hal_xxx_begin()
+  - deactivate() calls spi_shared_remove_consumer() + resets state
+- Modified module_system.cpp:
+  - Registered mod_spi_shared_ops in s_ops_table (must match ModuleId order)
+  - Added freshness timeout 0 for SPI_SHARED (infrastructure, no timeout)
+- Modified hal_init.cpp:
+  - Removed hal_sensor_spi_init() from hal_esp32_init_all()
+  - SPI bus now fully managed by module system
+
+Stage Summary:
+- SPI bus lifecycle fully managed by module system
+- DIRECT mode eliminates mutex overhead for single-SPI-device configurations
+- SHARED mode activates automatically when 2+ devices need SPI
+- Mode transitions are seamless and automatic
+- `module show SPI_SHARED` shows mode, consumer count, bus state
+- `module debug SPI_SHARED` shows full telemetry (utilization, switches, deadlines)
+- Diagnostic boot paths (imu_bringup, gnss_buildup) still work via direct HAL calls
+- Boot: IMU activates first → DIRECT mode → WAS activates → SHARED mode → ACTUATOR activates

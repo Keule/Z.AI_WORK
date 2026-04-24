@@ -7,6 +7,7 @@
  */
 
 #include "mod_imu.h"
+#include "mod_spi.h"
 #include "features.h"
 #include "dependency_policy.h"
 #include "global_state.h"
@@ -48,6 +49,8 @@ static bool mod_imu_is_enabled(void) {
 
 static void mod_imu_activate(void) {
     s_state = {};
+    // Register as SPI consumer BEFORE using SPI bus
+    spi_shared_add_consumer(ModuleId::IMU);
     hal_imu_begin();
     s_state.detected = hal_imu_detect();
     if (s_state.detected) {
@@ -59,8 +62,10 @@ static void mod_imu_activate(void) {
 }
 
 static void mod_imu_deactivate(void) {
-    // No-Op: SPI bus is shared and managed by HAL.
-    LOGI("IMU", "deactivated (SPI bus managed by HAL)");
+    // Unregister from SPI bus (may trigger mode switch or bus deinit)
+    spi_shared_remove_consumer(ModuleId::IMU);
+    s_state = {};
+    LOGI("IMU", "deactivated");
 }
 
 static bool mod_imu_is_healthy(uint32_t now_ms) {

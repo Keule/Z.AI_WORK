@@ -7,6 +7,7 @@
  */
 
 #include "mod_was.h"
+#include "mod_spi.h"
 #include "features.h"
 #include "dependency_policy.h"
 #include "hal/hal.h"
@@ -51,6 +52,8 @@ static bool mod_was_is_enabled(void) {
 
 static void mod_was_activate(void) {
     s_state = {};
+    // Register as SPI consumer BEFORE using SPI bus
+    spi_shared_add_consumer(ModuleId::WAS);
     hal_steer_angle_begin();
     s_state.detected = hal_steer_angle_detect();
     if (s_state.detected) {
@@ -62,8 +65,12 @@ static void mod_was_activate(void) {
 }
 
 static void mod_was_deactivate(void) {
-    // No-Op: SPI bus is shared and managed by HAL.
-    LOGI("WAS", "deactivated (SPI bus managed by HAL)");
+    // Unregister from SPI bus (may trigger mode switch or bus deinit)
+    spi_shared_remove_consumer(ModuleId::WAS);
+    s_state = {};
+    s_cached_angle_deg = 0.0f;
+    s_cached_raw = 0;
+    LOGI("WAS", "deactivated");
 }
 
 static bool mod_was_is_healthy(uint32_t now_ms) {
