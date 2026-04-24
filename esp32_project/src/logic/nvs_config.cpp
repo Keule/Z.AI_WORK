@@ -13,7 +13,7 @@
 #endif
 
 namespace {
-static constexpr const char* NTRIP_MOUNT_LEGACY_KEY = "ntrip_mountpoint";
+static constexpr const char* NTRIP_MOUNT_LEGACY_KEY = "ntrip_mnt_old";
 
 static uint32_t floatToU32(float value) {
     uint32_t out = 0;

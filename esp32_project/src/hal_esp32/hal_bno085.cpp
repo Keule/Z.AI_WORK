@@ -126,6 +126,16 @@ bool enableRuntimeReports() {
 void recoverAfterSpiReinit() {
     if (!s_bno08x_begin_attempted || !s_bno08x) return;
 
+    // Don't attempt recovery on boards without valid IMU pins
+    if (!pinValid(CS_IMU) && !pinValid(IMU_INT) && !pinValid(IMU_RST)) {
+        return;
+    }
+
+    // Stop retrying after 3 failed attempts — sensor is not present
+    if (s_spi_recover_count >= 3 && !s_bno08x_ready) {
+        return;
+    }
+
     prepareChipSelects();
     delay(20);
 
@@ -141,6 +151,10 @@ void recoverAfterSpiReinit() {
             safeDigitalRead(IMU_INT),
             safeDigitalRead(IMU_RST),
             safeDigitalRead(IMU_WAKE));
+
+    if (!s_bno08x_ready && s_spi_recover_count >= 3) {
+        hal_log("ESP32: BNO085 SPI recovery abandoned after %u failed attempts", 3);
+    }
 
     if (s_bno08x_ready) {
         enableRuntimeReports();

@@ -161,6 +161,13 @@ static void cliModuleActivate(const char* name) {
     ModuleId id = moduleIdFromName(name);
     if (id >= ModuleId::COUNT) { s_cli_out->printf("Unknown module: %s\n", name); return; }
     const bool ok = moduleSysActivate(id);
+    if (ok) {
+        // Auto-apply config so the module initializes with current settings
+        const auto* ops = moduleSysOps(id);
+        if (ops && ops->cfg_apply) {
+            ops->cfg_apply();
+        }
+    }
     s_cli_out->printf("%s: activate -> %s\n", name, ok ? "ON" : "ERROR");
 }
 

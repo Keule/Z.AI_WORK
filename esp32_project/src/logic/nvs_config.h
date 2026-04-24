@@ -29,10 +29,10 @@ constexpr const char* NET_SUBNET = "net_subnet";
 constexpr const char* ACT_TYPE = "actuator_type";
 // GNSS
 constexpr const char* GNSS_BAUD = "gnss_baud";
-constexpr const char* GNSS_UART_A_ROLE = "gnss_uart_a_role";
-constexpr const char* GNSS_UART_B_ROLE = "gnss_uart_b_role";
-constexpr const char* GNSS_UART_A_BAUD = "gnss_uart_a_baud";
-constexpr const char* GNSS_UART_B_BAUD = "gnss_uart_b_baud";
+constexpr const char* GNSS_UART_A_ROLE = "gnss_ua_role";
+constexpr const char* GNSS_UART_B_ROLE = "gnss_ub_role";
+constexpr const char* GNSS_UART_A_BAUD = "gnss_ua_baud";
+constexpr const char* GNSS_UART_B_BAUD = "gnss_ub_baud";
 }  // namespace nvs_keys
 
 /// Lädt alle gespeicherten Werte aus NVS in cfg.

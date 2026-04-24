@@ -50,7 +50,7 @@ static ModuleRuntime* s_rt = nullptr;
 // ===================================================================
 namespace wifi_keys {
     static constexpr const char* SSID     = "mod_wifi_ssid";
-    static constexpr const char* PASSWORD = "mod_wifi_password";
+    static constexpr const char* PASSWORD = "mod_wifi_pass";
     static constexpr const char* MODE     = "mod_wifi_mode";  // "ap" or "sta"
 }
 
