@@ -338,3 +338,42 @@ Stage Summary:
 - Board profile comments cleaned up and corrected for both S3 and classic ESP32
 - Top-level duplicate board profile files replaced with deprecated redirects
 - No logic changes, only includes/comments/rename
+
+---
+Task ID: ADR-MODULE-002-cleanup
+Agent: main
+Task: ADR-MODULE-002 Unified Module System — Cleanup, Build Fixes, Migration
+
+Work Log:
+- Verified project status: 6 commits from previous session (main.cpp, mod_*.h/.cpp already created)
+- Pushed 6 pending commits to GitHub
+- Discovered 4 missing cmd_*.cpp files causing linker errors
+- Created cmd_network.cpp (network status + RTCM telemetry)
+- Created cmd_ntrip.cpp (NTRIP client status display)
+- Created cmd_pid.cpp (PID controller tuning: show/reset/set)
+- Created cmd_actuator.cpp (manual actuator test mode)
+- Fixed NtripConnState enum values in cmd_ntrip.cpp
+- Build verified: RAM 26.0%, Flash 45.5% — SUCCESS
+- Committed and pushed build fix
+
+- Analyzed old file dependencies (modules.h, ntrip.h, sd_logger.h, op_mode.h)
+- Migrated 6 consumer files from old modules.h API to new module_interface.h API:
+  - diagnostics.cpp: selftest uses ModuleId enum, module status uses moduleSysGet()
+  - diag.cpp: diagPrintHw() uses individual moduleSysGet() queries
+  - runtime_config.cpp: MOD_SD → ModuleId::LOGGING
+  - op_mode.cpp: MOD_ETH → ModuleId::ETH, inlined pipeline ready check
+  - sd_logger_esp32.cpp: MOD_SD/MOD_LOGSW → ModuleId::LOGGING
+  - sd_ota_esp32.cpp: MOD_SD → ModuleId::LOGGING
+- Deleted modules.h and modules.cpp (847 lines removed, 92 added)
+- Resolved OpMode name conflict (op_mode.h typedef vs module_interface.h enum class) via forward declarations
+- Build verified: RAM 26.0%, Flash 45.4% — SUCCESS
+- Committed and pushed migration
+
+Stage Summary:
+- Old modules.h/cpp completely removed from codebase (no remaining #include references)
+- 6 consumer files migrated to new module_interface.h API
+- 4 new cmd_*.cpp CLI handler files created
+- OpMode naming conflict resolved with forward declarations
+- All builds pass cleanly with no warnings on migrated code
+- GitHub repo up to date with 3 new commits pushed
+- Remaining old files still in use: ntrip.h/.cpp, sd_logger.h/.cpp, op_mode.h/.cpp ( wrappers in mod_ntrip/mod_logging)
