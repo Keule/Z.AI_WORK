@@ -385,6 +385,11 @@ static void maintEthMonitor(void) {
  */
 static void maintTaskFunc(void* param) {
     (void)param;
+
+    // TASK-045: Subscribe to TWDT so our esp_task_wdt_reset() calls are effective.
+    // Also feeds IDLE0/IDLE1 indirectly by ensuring the TWDT counter is reset.
+    esp_task_wdt_add(NULL);
+
     LOGI("MAINT", "task started on core %d (priority=1, stack=8 KB)", xPortGetCoreID());
 
     bool was_active = false;
@@ -394,8 +399,13 @@ static void maintTaskFunc(void* param) {
 
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(1000));  // 1 s base interval
-        esp_task_wdt_reset();  // Feed TWDT every iteration — prevents IDLE0 starvation
+        esp_task_wdt_reset();  // Feed TWDT every iteration
         loop_count++;
+
+        // Heartbeat every 30 s for diagnostics (TASK-045)
+        if (loop_count % 30 == 0) {
+            LOGI("MAINT", "heartbeat (loop=%lu, core=%d)", (unsigned long)loop_count, xPortGetCoreID());
+        }
 
         // ADR-005: GPIO-Poll fuer Modus-Switch
         opModeGpioPoll();
@@ -556,7 +566,7 @@ void sdLoggerInit(void) {
 
     s_logging_active = false;
 
-    // Create the legacy logger task on Core 0 with LOWEST priority.
+    // TASK-045: Pin to Core 1 (same reason as sdLoggerMaintInit).
     xTaskCreatePinnedToCore(
         maintTaskFunc,
         "logger",
@@ -564,7 +574,7 @@ void sdLoggerInit(void) {
         nullptr,
         1,              // LOWEST priority
         &s_maint_task_handle,
-        0               // Core 0
+        1               // Core 1 (was Core 0 — TASK-045 WDT fix)
     );
 
     LOGI("MAINT", "legacy logger initialised (flush interval = 2000 ms, static 16 KB buffer)");
@@ -585,7 +595,8 @@ void sdLoggerMaintInit(void) {
     // Allocate PSRAM ring buffer
     bool psram_ok = moduleSysIsActive(ModuleId::LOGGING) ? sdLoggerPsramInit() : false;
 
-    // Create the maintenance task on Core 0 with LOWEST priority.
+    // TASK-045: Pin to Core 1 to avoid starving IDLE0 on Core 0.
+    // Core 0 IDLE must run to feed the Task Watchdog Timer.
     xTaskCreatePinnedToCore(
         maintTaskFunc,
         "maint",
@@ -593,7 +604,7 @@ void sdLoggerMaintInit(void) {
         nullptr,
         1,              // LOWEST priority
         &s_maint_task_handle,
-        0               // Core 0
+        1               // Core 1 (was Core 0 — TASK-045 WDT fix)
     );
 
     if (psram_ok) {
