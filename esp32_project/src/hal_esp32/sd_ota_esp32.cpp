@@ -18,7 +18,7 @@
 
 #include "hal/hal.h"
 #include "fw_config.h"
-#include "logic/modules.h"
+#include "logic/module_interface.h"
 #include "logic/sd_ota.h"
 
 #include "logic/log_config.h"
@@ -125,7 +125,7 @@ static bool verifyOtaSupported(void) {
  * @return false if no file, same version, or SD error.
  */
 bool isFirmwareUpdateAvailableOnSD(void) {
-    if (!moduleIsActive(MOD_SD)) {
+    if (!moduleSysIsActive(ModuleId::LOGGING)) {
         LOGW("OTA", "MOD_SD inactive -> skip SD OTA availability check");
         return false;
     }
@@ -252,7 +252,7 @@ cleanup:
  * @return false on any error (old firmware kept).
  */
 bool updateFirmwareFromSD(void) {
-    if (!moduleIsActive(MOD_SD)) {
+    if (!moduleSysIsActive(ModuleId::LOGGING)) {
         LOGW("OTA", "MOD_SD inactive -> skip SD OTA update");
         return false;
     }

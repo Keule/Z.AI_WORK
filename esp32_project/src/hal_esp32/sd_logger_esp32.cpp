@@ -44,10 +44,14 @@
 #include "hal/hal.h"
 #include "fw_config.h"
 #include "logic/features.h"
-#include "logic/modules.h"
+#include "logic/module_interface.h"
 #include "logic/sd_logger.h"
 #include "logic/global_state.h"
-#include "logic/op_mode.h"  // ADR-005: Operating Mode
+
+// Forward declarations from op_mode.h — avoid including op_mode.h directly
+// because it defines typedef enum OpMode which conflicts with module_interface.h's enum class OpMode
+extern "C" void opModeGpioPoll(void);
+extern "C" bool opModeIsPaused(void);
 
 #include "logic/log_config.h"
 #define LOG_LOCAL_LEVEL LOG_LEVEL_MAINT
@@ -414,7 +418,7 @@ static void maintTaskFunc(void* param) {
         // -----------------------------------------------------------------
         // 3. SD card logging (every 2nd iteration = 2 s)
         // -----------------------------------------------------------------
-        if (!moduleIsActive(MOD_SD)) {
+        if (!moduleSysIsActive(ModuleId::LOGGING)) {
             if (s_logging_active || was_active) {
                 LOGW("MAINT", "MOD_SD inactive -> forcing logger idle");
                 s_logging_active = false;
@@ -425,7 +429,7 @@ static void maintTaskFunc(void* param) {
 
         // Read switch with simple debounce. If LOGSW module is not active,
         // force logger switch OFF to avoid phantom SD sessions.
-        const bool logsw_active = moduleIsActive(MOD_LOGSW);
+        const bool logsw_active = moduleSysIsActive(ModuleId::LOGGING);  // MOD_LOGSW mapped to LOGGING
         bool switch_raw = logsw_active ? sdLoggerReadSwitch() : false;
         uint32_t now = millis();
         if (switch_raw != last_switch_raw) {
@@ -523,7 +527,7 @@ static void maintTaskFunc(void* param) {
 // ===================================================================
 
 void sdLoggerInit(void) {
-    if (!moduleIsActive(MOD_SD)) {
+    if (!moduleSysIsActive(ModuleId::LOGGING)) {
         LOGW("MAINT", "MOD_SD inactive -> skip legacy logger init");
         s_logging_active = false;
         return;
@@ -553,19 +557,17 @@ void sdLoggerInit(void) {
 void sdLoggerMaintInit(void) {
     // TASK-029 init — PSRAM buffer + combined maintTask.
     // Configure logging switch GPIO
-    if (moduleIsActive(MOD_SD) && moduleIsActive(MOD_LOGSW)) {
+    if (moduleSysIsActive(ModuleId::LOGGING)) {  // was: MOD_SD && MOD_LOGSW
         pinMode(LOG_SWITCH_PIN, INPUT_PULLUP);
         LOGI("MAINT", "switch on GPIO %d (active LOW)", LOG_SWITCH_PIN);
-    } else if (moduleIsActive(MOD_SD)) {
-        LOGW("MAINT", "MOD_LOGSW inactive -> SD logging switch disabled");
     } else {
-        LOGW("MAINT", "MOD_SD inactive -> maintenance task will run without SD logging");
+        LOGW("MAINT", "LOGGING module inactive -> SD logging switch disabled");
     }
 
     s_logging_active = false;
 
     // Allocate PSRAM ring buffer
-    bool psram_ok = moduleIsActive(MOD_SD) ? sdLoggerPsramInit() : false;
+    bool psram_ok = moduleSysIsActive(ModuleId::LOGGING) ? sdLoggerPsramInit() : false;
 
     // Create the maintenance task on Core 0 with LOWEST priority.
     xTaskCreatePinnedToCore(
@@ -580,7 +582,7 @@ void sdLoggerMaintInit(void) {
 
     if (psram_ok) {
         LOGI("MAINT", "initialised (PSRAM buffer, SD+NTRIP+ETH)");
-    } else if (moduleIsActive(MOD_SD)) {
+    } else if (moduleSysIsActive(ModuleId::LOGGING)) {
         LOGI("MAINT", "initialised (static buffer fallback, SD+NTRIP+ETH)");
     } else {
         LOGI("MAINT", "initialised (NTRIP+ETH maintenance, SD logging disabled)");

@@ -18,7 +18,13 @@
 #include "op_mode.h"
 #include "global_state.h"
 #include "hal/hal.h"
-#include "modules.h"
+// Forward declarations for module system API.
+// Cannot include "module_interface.h" here due to OpMode conflict with op_mode.h.
+enum class ModuleId : uint8_t {
+    ETH = 0, WIFI, BT, NETWORK, GNSS, NTRIP, IMU, WAS, ACTUATOR,
+    SAFETY, STEER, LOGGING, OTA, COUNT
+};
+bool moduleSysIsActive(ModuleId id);
 #include "fw_config.h"
 
 #include "log_config.h"
@@ -114,7 +120,7 @@ static void setPausedFlag(bool paused) {
 /// Sanity-Check fuer PAUSED → ACTIVE: ETH + Pipeline + Link (Step 4)
 static bool sanityCheckForActive(void) {
     // 1. ETH Modul muss aktiv sein
-    if (!moduleIsActive(MOD_ETH)) {
+    if (!moduleSysIsActive(ModuleId::ETH)) {
         hal_log("[OPMODE] PAUSED→ACTIVE verweigert: ETH Modul nicht aktiv");
         return false;
     }
@@ -125,11 +131,13 @@ static bool sanityCheckForActive(void) {
         return false;
     }
 
-    // 3. Control-Pipeline muss bereit sein (IMU + ADS + ACT)
-    char pipeline_reason[64] = {0};
-    if (!moduleControlPipelineReady(pipeline_reason, sizeof(pipeline_reason))) {
-        hal_log("[OPMODE] PAUSED→ACTIVE verweigert: Pipeline nicht bereit (%s)",
-                pipeline_reason[0] ? pipeline_reason : "unbekannt");
+    // 3. Control-Pipeline muss bereit sein (IMU + WAS + ACT + SAFETY)
+    bool pipeline_ready = moduleSysIsActive(ModuleId::IMU) &&
+                          moduleSysIsActive(ModuleId::WAS) &&
+                          moduleSysIsActive(ModuleId::ACTUATOR) &&
+                          moduleSysIsActive(ModuleId::SAFETY);
+    if (!pipeline_ready) {
+        hal_log("[OPMODE] PAUSED→ACTIVE verweigert: Pipeline nicht bereit");
         return false;
     }
 

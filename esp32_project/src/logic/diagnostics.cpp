@@ -12,10 +12,9 @@
 
 #include "diagnostics.h"
 #include "hal/hal.h"
-#include "modules.h"
+#include "module_interface.h"
 #include "features.h"
 #include "sd_logger.h"
-#include "op_mode.h"
 
 #if FEAT_ENABLED(FEAT_COMPILED_NTRIP)
 #include "ntrip.h"
@@ -67,8 +66,9 @@ DiagSelftestResult diagRunSelftest(void) {
 
     // ETH Test
     {
-        bool compiled = moduleGetState(MOD_ETH) != MOD_UNAVAILABLE;
-        bool active = moduleIsActive(MOD_ETH);
+        const auto* ops = moduleSysOps(ModuleId::ETH);
+        bool compiled = ops && ops->is_enabled();
+        bool active = moduleSysIsActive(ModuleId::ETH);
         bool link = hal_net_link_up();
         bool connected = hal_net_is_connected();
         bool detected = hal_net_detected();
@@ -79,10 +79,11 @@ DiagSelftestResult diagRunSelftest(void) {
 
     // IMU Test
     {
-        bool compiled = moduleGetState(MOD_IMU) != MOD_UNAVAILABLE;
-        bool active = moduleIsActive(MOD_IMU);
-        const auto* info = moduleGetInfo(MOD_IMU);
-        bool detected = info ? info->hw_detected : false;
+        const auto* ops = moduleSysOps(ModuleId::IMU);
+        bool compiled = ops && ops->is_enabled();
+        bool active = moduleSysIsActive(ModuleId::IMU);
+        const auto* mod = moduleSysGet(ModuleId::IMU);
+        bool detected = mod ? mod->state.detected : false;
         bool ok = compiled && detected && active;
         addModuleResult(result, "IMU", compiled, ok,
             ok ? nullptr : (compiled ? (detected ? "nicht aktiv" : "HW nicht detektiert") : "nicht kompiliert"));
@@ -90,10 +91,11 @@ DiagSelftestResult diagRunSelftest(void) {
 
     // ADS/WAS Test
     {
-        bool compiled = moduleGetState(MOD_ADS) != MOD_UNAVAILABLE;
-        bool active = moduleIsActive(MOD_ADS);
-        const auto* info = moduleGetInfo(MOD_ADS);
-        bool detected = info ? info->hw_detected : false;
+        const auto* ops = moduleSysOps(ModuleId::WAS);
+        bool compiled = ops && ops->is_enabled();
+        bool active = moduleSysIsActive(ModuleId::WAS);
+        const auto* mod = moduleSysGet(ModuleId::WAS);
+        bool detected = mod ? mod->state.detected : false;
         bool ok = compiled && detected && active;
         addModuleResult(result, "ADS/WAS", compiled, ok,
             ok ? nullptr : (compiled ? (detected ? "nicht aktiv" : "HW nicht detektiert") : "nicht kompiliert"));
@@ -101,10 +103,11 @@ DiagSelftestResult diagRunSelftest(void) {
 
     // ACT Test
     {
-        bool compiled = moduleGetState(MOD_ACT) != MOD_UNAVAILABLE;
-        bool active = moduleIsActive(MOD_ACT);
-        const auto* info = moduleGetInfo(MOD_ACT);
-        bool detected = info ? info->hw_detected : false;
+        const auto* ops = moduleSysOps(ModuleId::ACTUATOR);
+        bool compiled = ops && ops->is_enabled();
+        bool active = moduleSysIsActive(ModuleId::ACTUATOR);
+        const auto* mod = moduleSysGet(ModuleId::ACTUATOR);
+        bool detected = mod ? mod->state.detected : false;
         bool ok = compiled && detected && active;
         addModuleResult(result, "ACT", compiled, ok,
             ok ? nullptr : (compiled ? (detected ? "nicht aktiv" : "HW nicht detektiert") : "nicht kompiliert"));
@@ -112,8 +115,9 @@ DiagSelftestResult diagRunSelftest(void) {
 
     // SD Test
     {
-        bool compiled = moduleGetState(MOD_SD) != MOD_UNAVAILABLE;
-        bool active = moduleIsActive(MOD_SD);
+        const auto* ops = moduleSysOps(ModuleId::LOGGING);
+        bool compiled = ops && ops->is_enabled();
+        bool active = moduleSysIsActive(ModuleId::LOGGING);
         bool card_present = hal_sd_card_present();
         bool ok = compiled && active && card_present;
         addModuleResult(result, "SD", compiled, ok,
@@ -122,8 +126,9 @@ DiagSelftestResult diagRunSelftest(void) {
 
     // GNSS Test
     {
-        bool compiled = moduleGetState(MOD_GNSS) != MOD_UNAVAILABLE;
-        bool active = moduleIsActive(MOD_GNSS);
+        const auto* ops = moduleSysOps(ModuleId::GNSS);
+        bool compiled = ops && ops->is_enabled();
+        bool active = moduleSysIsActive(ModuleId::GNSS);
         bool uart0_ready = hal_gnss_uart_is_ready(0);
         bool uart1_ready = hal_gnss_uart_is_ready(1);
         bool ok = compiled && active && (uart0_ready || uart1_ready);
@@ -139,8 +144,9 @@ DiagSelftestResult diagRunSelftest(void) {
     // NTRIP Test
 #if FEAT_ENABLED(FEAT_COMPILED_NTRIP)
     {
-        bool compiled = moduleGetState(MOD_NTRIP) != MOD_UNAVAILABLE;
-        bool active = moduleIsActive(MOD_NTRIP);
+        const auto* ops = moduleSysOps(ModuleId::NTRIP);
+        bool compiled = ops && ops->is_enabled();
+        bool active = moduleSysIsActive(ModuleId::NTRIP);
         bool conn_ok = false;
         const char* detail = nullptr;
         if (compiled && active) {
@@ -166,8 +172,9 @@ DiagSelftestResult diagRunSelftest(void) {
 
     // Safety Test
     {
-        bool compiled = moduleGetState(MOD_SAFETY) != MOD_UNAVAILABLE;
-        bool active = moduleIsActive(MOD_SAFETY);
+        const auto* ops = moduleSysOps(ModuleId::SAFETY);
+        bool compiled = ops && ops->is_enabled();
+        bool active = moduleSysIsActive(ModuleId::SAFETY);
         bool safety = hal_safety_ok();
         bool ok = compiled && active && safety;
         addModuleResult(result, "SAFETY", compiled, ok,
@@ -189,26 +196,19 @@ void diagPrintModuleStatus(void* output_stream) {
     if (!out) out = &Serial;
 
     out->println("=== Module Status ===");
-    out->println("  Modul    Compiled  Detected  Active   Pins  Deps");
+    out->printf("  %-8s Active   Detected  Healthy  Error\n", "Module");
 
-    for (int i = 0; i < MOD_COUNT; ++i) {
-        const auto* info = moduleGetInfo(static_cast<FirmwareFeatureId>(i));
-        if (!info) continue;
-
-        const char* state_str = "?";
-        switch (moduleGetState(static_cast<FirmwareFeatureId>(i))) {
-            case MOD_UNAVAILABLE: state_str = "N/A  "; break;
-            case MOD_OFF:         state_str = "OFF  "; break;
-            case MOD_ON:          state_str = "ON   "; break;
-        }
-
-        out->printf("  %-8s %s    %s      %s  %2u    %s\n",
-                    info->name ? info->name : "?",
-                    info->compiled ? "ja" : "nein",
-                    info->hw_detected ? "ja" : "nein",
-                    state_str,
-                    (unsigned)info->pin_count,
-                    info->deps ? "ja" : "-");
+    for (int i = 0; i < static_cast<int>(ModuleId::COUNT); i++) {
+        auto id = static_cast<ModuleId>(i);
+        const auto* mod = moduleSysGet(id);
+        if (!mod) continue;
+        const char* name = moduleIdToName(id);
+        out->printf("  %-8s %s  %s     %s       %ld\n",
+                    name,
+                    mod->active ? "ON " : "OFF",
+                    mod->state.detected ? "ja " : "nein",
+                    moduleSysIsHealthy(id, hal_millis()) ? "ja " : "nein",
+                    (long)mod->state.error_code);
     }
 }
 
@@ -248,7 +248,7 @@ void diagPrintPinMap(void* output_stream) {
 void diagPrintLogStats(void) {
     Serial.println("=== SD-Log Statistiken ===");
 
-    if (!moduleIsActive(MOD_SD)) {
+    if (!moduleSysIsActive(ModuleId::LOGGING)) {
         Serial.println("  SD Modul nicht aktiv");
         return;
     }
@@ -276,12 +276,12 @@ void diagPrintLogStats(void) {
 
 bool diagExportLogCsv(void) {
     // Nur im PAUSED Modus zulaessig!
-    if (!opModeIsPaused()) {
+    if (modeGet() != OpMode::CONFIG) {
         Serial.println("Fehler: CSV Export nur im PAUSED Modus zulaessig");
         return false;
     }
 
-    if (!moduleIsActive(MOD_SD)) {
+    if (!moduleSysIsActive(ModuleId::LOGGING)) {
         Serial.println("Fehler: SD Modul nicht aktiv");
         return false;
     }

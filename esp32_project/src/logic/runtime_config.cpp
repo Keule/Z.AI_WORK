@@ -16,7 +16,7 @@
 
 #include "runtime_config.h"
 #include "soft_config.h"
-#include "modules.h"
+#include "module_interface.h"
 
 #include <cstring>
 
@@ -175,8 +175,8 @@ cleanup:
 
 bool softConfigLoadOverrides(RuntimeConfig& cfg) {
 #if defined(ARDUINO_ARCH_ESP32)
-    if (!moduleIsActive(MOD_SD)) {
-        hal_log("CFG: MOD_SD inactive -> skip SD override load");
+    if (!moduleSysIsActive(ModuleId::LOGGING)) {
+        hal_log("CFG: LOGGING inactive -> skip SD override load");
         return false;
     }
     if (loadNtripFromSd(cfg)) {

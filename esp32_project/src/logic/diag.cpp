@@ -5,7 +5,7 @@
 
 #include "diag.h"
 
-#include "modules.h"
+#include "module_interface.h"
 #include "runtime_config.h"
 #include "hal/hal.h"
 
@@ -15,18 +15,16 @@
 
 void diagPrintHw(void) {
     Serial.println("Diag HW:");
-    const ModuleHwStatus* hw = modulesGetHwStatus();
-    if (!hw) {
-        Serial.println("  (no hw status available)");
-        return;
-    }
-
-    Serial.printf("  ETH:    %s\n", hw->eth_detected ? "OK" : "FAIL");
-    Serial.printf("  IMU:    %s\n", hw->imu_detected ? "OK" : "FAIL");
-    Serial.printf("  ADS:    %s\n", hw->was_detected ? "OK" : "FAIL");
-    Serial.printf("  ACT:    %s\n", hw->actuator_detected ? "OK" : "FAIL");
-    Serial.printf("  SAFETY: %s\n", hw->safety_ok ? "OK" : "KICK");
-    Serial.printf("  SD:     %s\n", hw->sd_present ? "PRESENT" : "MISSING");
+    Serial.printf("  ETH:    %s\n", moduleSysIsActive(ModuleId::ETH) && hal_net_detected() ? "OK" : "FAIL");
+    const auto* imu_mod = moduleSysGet(ModuleId::IMU);
+    Serial.printf("  IMU:    %s\n", imu_mod && imu_mod->state.detected ? "OK" : "FAIL");
+    const auto* was_mod = moduleSysGet(ModuleId::WAS);
+    Serial.printf("  ADS:    %s\n", was_mod && was_mod->state.detected ? "OK" : "FAIL");
+    const auto* act_mod = moduleSysGet(ModuleId::ACTUATOR);
+    Serial.printf("  ACT:    %s\n", act_mod && act_mod->state.detected ? "OK" : "FAIL");
+    Serial.printf("  SAFETY: %s\n", hal_safety_ok() ? "OK" : "KICK");
+    const auto* log_mod = moduleSysGet(ModuleId::LOGGING);
+    Serial.printf("  SD:     %s\n", log_mod && log_mod->state.detected ? "PRESENT" : "MISSING");
 }
 
 void diagPrintMem(void) {
