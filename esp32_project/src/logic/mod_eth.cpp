@@ -42,6 +42,8 @@
 #include <nvs.h>
 #endif
 
+extern Stream* s_cli_out;
+
 static const char* const TAG = "MOD_ETH";
 
 // ===================================================================
