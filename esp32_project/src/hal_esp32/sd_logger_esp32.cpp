@@ -65,7 +65,6 @@ extern "C" bool opModeIsControlActive(void);
 #include <SD.h>
 #include <freertos/FreeRTOS.h>
 #include <esp_heap_caps.h>
-#include <esp_task_wdt.h>
 
 #if FEAT_ENABLED(FEAT_COMPILED_NTRIP)
 #include "logic/ntrip.h"
@@ -386,9 +385,10 @@ static void maintEthMonitor(void) {
 static void maintTaskFunc(void* param) {
     (void)param;
 
-    // TASK-045: Subscribe to TWDT so our esp_task_wdt_reset() calls are effective.
-    // Also feeds IDLE0/IDLE1 indirectly by ensuring the TWDT counter is reset.
-    esp_task_wdt_add(NULL);
+    // NOTE: Do NOT call esp_task_wdt_add(NULL) here.
+    // The maintTask performs intentionally blocking operations (SD I/O, NTRIP TCP).
+    // It is pinned to Core 1 (TASK-045) so it cannot starve IDLE0 on Core 0.
+    // IDLE1 on Core 1 is safe due to vTaskDelay(1000) in the loop.
 
     LOGI("MAINT", "task started on core %d (priority=1, stack=8 KB)", xPortGetCoreID());
 
@@ -399,7 +399,6 @@ static void maintTaskFunc(void* param) {
 
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(1000));  // 1 s base interval
-        esp_task_wdt_reset();  // Feed TWDT every iteration
         loop_count++;
 
         // Heartbeat every 30 s for diagnostics (TASK-045)
@@ -417,13 +416,10 @@ static void maintTaskFunc(void* param) {
 
         // -----------------------------------------------------------------
         // 2. NTRIP state machine (every iteration = 1 s)
-        //     Only connects in ACTIVE mode.  Feeds WDT around hal_tcp_connect()
-        //     which can block for up to 3 s and would starve the IDLE task.
+        //     Only connects in ACTIVE mode.  Blocking TCP connect is OK here
+        //     since maintTask runs on Core 1 — IDLE0 (Core 0) is unaffected.
         // -----------------------------------------------------------------
 #if FEAT_ENABLED(FEAT_COMPILED_NTRIP)
-        // NTRIP only runs when control is ACTIVE (not BOOTING, not PAUSED).
-        // Feed WDT before/after ntripTick() since hal_tcp_connect() can
-        // block for up to 3 seconds and starve the IDLE task on CPU 0.
         if (!opModeIsControlActive()) {
             // BOOTING or PAUSED — do not attempt NTRIP connections.
             if (hal_tcp_connected()) {
@@ -431,9 +427,7 @@ static void maintTaskFunc(void* param) {
                 hal_tcp_disconnect();
             }
         } else {
-            esp_task_wdt_reset();  // Feed WDT before potentially blocking call
             ntripTick();
-            esp_task_wdt_reset();  // Feed WDT after potentially blocking call
         }
 #endif
 
@@ -465,7 +459,6 @@ static void maintTaskFunc(void* param) {
             // --- TRANSITION: OFF -> ON ---
             LOGI("MAINT", "log switch ON – starting logging session");
 
-            esp_task_wdt_reset();  // Feed WDT before blocking SD init
             sdBusClaim();
 
             // Init SD card on shared SPI2_HOST
@@ -488,7 +481,6 @@ static void maintTaskFunc(void* param) {
             sdSPI.end();
 
             sdBusRelease();
-            esp_task_wdt_reset();  // Feed WDT after blocking SD init
             was_active = true;
 
         } else if (!switch_debounced && was_active) {
@@ -505,7 +497,6 @@ static void maintTaskFunc(void* param) {
             // --- ACTIVE: flush ring buffer to SD (every 2 s) ---
             if (!sdLoggerHasRecords()) continue;
 
-            esp_task_wdt_reset();  // Feed WDT before blocking SD flush
             sdBusClaim();
 
             // Re-init SD (we close it after each flush)
@@ -542,7 +533,6 @@ static void maintTaskFunc(void* param) {
             sdSPI.end();
 
             sdBusRelease();
-            esp_task_wdt_reset();  // Feed WDT after blocking SD flush
         }
         // else: switch OFF and was_active=false -> nothing to do (idle)
     }
