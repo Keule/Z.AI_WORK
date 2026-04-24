@@ -51,10 +51,10 @@ static WiFiUDP ethUDP_recv;  // Listen socket – bound to port 8888
 static WiFiUDP ethUDP_send;  // Send socket – sends FROM port 5126
 static WiFiUDP ethUDP_rtcm;  // Listen socket – RTCM port
 
-// Static IP configuration
-static IPAddress s_local_ip(192, 168, 1, 70);
-static IPAddress s_subnet(255, 255, 255, 0);
-static IPAddress s_gateway(192, 168, 1, 1);
+// Static IP configuration (default = 0.0.0.0 → DHCP)
+static IPAddress s_local_ip(0, 0, 0, 0);
+static IPAddress s_subnet(0, 0, 0, 0);
+static IPAddress s_gateway(0, 0, 0, 0);
 static IPAddress s_dns(8, 8, 8, 8);
 static IPAddress s_dest_ip(192, 168, 1, 255);
 
