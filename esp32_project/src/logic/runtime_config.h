@@ -32,6 +32,10 @@ struct RuntimeConfig {
 
     // GNSS
     uint32_t gnss_baud;
+    uint32_t gnss_uart_a_baud;
+    uint32_t gnss_uart_b_baud;
+    uint8_t  gnss_uart_a_role;  // 0=DISABLED, 1=NMEA, 2=RTCM, 3=DIAG
+    uint8_t  gnss_uart_b_role;
 
     // Logging
     uint32_t log_interval_ms;

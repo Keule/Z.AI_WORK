@@ -26,7 +26,7 @@ inline constexpr const char* NTRIP_PASSWORD     = "";
 inline constexpr uint32_t     NTRIP_RECONNECT_MS = 5000;
 
 // --- GNSS Defaults ---
-inline constexpr uint32_t     GNSS_BAUD            = 460800;
+inline constexpr uint32_t     GNSS_BAUD            = 921600;
 inline constexpr uint32_t     GNSS_RETRY_TIMEOUT_MS = 10000;
 
 // --- Network Defaults ---

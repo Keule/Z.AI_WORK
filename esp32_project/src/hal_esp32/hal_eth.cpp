@@ -31,6 +31,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
+#include "esp_wifi.h"
 
 // ===================================================================
 // ETH driver selection based on Arduino ESP32 Core version
@@ -114,6 +115,11 @@ static void onEthEvent(WiFiEvent_t event) {
 
         ethUDP_send.begin(aog_port::STEER);
         hal_log("ETH: UDP sending from port %u (to AgIO port %u)", aog_port::STEER, aog_port::AGIO_SEND);
+
+        // WiFi radio deaktivieren — Ethernet ist primaere Verbindung,
+        // spart CPU/RAM und verhindert WiFi socket errors (errno 113)
+        WiFi.mode(WIFI_OFF);
+        hal_log("ETH: WiFi radio disabled (Ethernet is primary)");
         break;
 
     case ARDUINO_EVENT_ETH_DISCONNECTED:

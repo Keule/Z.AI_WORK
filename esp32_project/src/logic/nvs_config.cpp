@@ -77,6 +77,10 @@ void nvsConfigLoad(RuntimeConfig& cfg) {
 
     // GNSS
     if (nvs_get_u32(handle, nvs_keys::GNSS_BAUD, &u32) == ESP_OK) cfg.gnss_baud = u32;
+    if (nvs_get_u32(handle, nvs_keys::GNSS_UART_A_BAUD, &u32) == ESP_OK) cfg.gnss_uart_a_baud = u32;
+    if (nvs_get_u32(handle, nvs_keys::GNSS_UART_B_BAUD, &u32) == ESP_OK) cfg.gnss_uart_b_baud = u32;
+    if (nvs_get_u8(handle, nvs_keys::GNSS_UART_A_ROLE, &u8) == ESP_OK) cfg.gnss_uart_a_role = u8;
+    if (nvs_get_u8(handle, nvs_keys::GNSS_UART_B_ROLE, &u8) == ESP_OK) cfg.gnss_uart_b_role = u8;
 
     nvs_close(handle);
 #else
@@ -122,6 +126,10 @@ bool nvsConfigSave(const RuntimeConfig& cfg) {
 
     // GNSS
     check_set(nvs_set_u32(handle, nvs_keys::GNSS_BAUD, cfg.gnss_baud), nvs_keys::GNSS_BAUD);
+    check_set(nvs_set_u32(handle, nvs_keys::GNSS_UART_A_BAUD, cfg.gnss_uart_a_baud), nvs_keys::GNSS_UART_A_BAUD);
+    check_set(nvs_set_u32(handle, nvs_keys::GNSS_UART_B_BAUD, cfg.gnss_uart_b_baud), nvs_keys::GNSS_UART_B_BAUD);
+    check_set(nvs_set_u8(handle, nvs_keys::GNSS_UART_A_ROLE, cfg.gnss_uart_a_role), nvs_keys::GNSS_UART_A_ROLE);
+    check_set(nvs_set_u8(handle, nvs_keys::GNSS_UART_B_ROLE, cfg.gnss_uart_b_role), nvs_keys::GNSS_UART_B_ROLE);
 
     const esp_err_t commit_err = nvs_commit(handle);
     if (commit_err != ESP_OK) {

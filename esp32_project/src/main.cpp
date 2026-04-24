@@ -301,6 +301,25 @@ static void bootMaintWebHandleUpdateUpload(void) {
 }
 
 static void bootMaintStartServices(void) {
+    const bool eth_up = hal_net_is_connected();
+
+    // Web OTA Server (ueber Ethernet erreichbar, unabhaengig von WiFi)
+    s_boot_web_server.on("/", HTTP_GET, bootMaintWebHandleRoot);
+    s_boot_web_server.on("/update", HTTP_POST, bootMaintWebHandleUpdateDone, bootMaintWebHandleUpdateUpload);
+    s_boot_web_server.begin();
+    s_boot_web_ota_active = true;
+
+    if (eth_up) {
+        // Ethernet ist verfuegbar — WiFi AP und BT SPP ueberspringen
+        char ip_buf[20] = {0};
+        formatIpU32(hal_net_get_ip(), ip_buf, sizeof(ip_buf));
+        hal_log("BOOT: ETH connected — WiFi/BT skipped (Web OTA via ETH: http://%s/)", ip_buf);
+        s_boot_eth_url_logged = true;
+        um980SetupSetConsoleMirror(nullptr);
+        return;
+    }
+
+    // Kein Ethernet — WiFi AP + BT SPP starten (Fallback fuer Boot-Konfiguration)
     WiFi.persistent(false);
     WiFi.disconnect(true, true);
     delay(100);
@@ -324,20 +343,9 @@ static void bootMaintStartServices(void) {
         hal_log("BOOT: WiFi AP start failed (SSID=%s)", MAIN_BOOT_AP_SSID);
     }
 
-    s_boot_web_server.on("/", HTTP_GET, bootMaintWebHandleRoot);
-    s_boot_web_server.on("/update", HTTP_POST, bootMaintWebHandleUpdateDone, bootMaintWebHandleUpdateUpload);
-    s_boot_web_server.begin();
-    s_boot_web_ota_active = true;
     hal_log("BOOT: Web OTA active at http://%s/", WiFi.softAPIP().toString().c_str());
-    if (hal_net_is_connected()) {
-        char ip_buf[20] = {0};
-        formatIpU32(hal_net_get_ip(), ip_buf, sizeof(ip_buf));
-        hal_log("BOOT: Web OTA via ETH available at http://%s/", ip_buf);
-        s_boot_eth_url_logged = true;
-    } else {
-        s_boot_eth_url_logged = false;
-        hal_log("BOOT: ETH link/IP not ready yet (Web OTA URL will be logged when available)");
-    }
+    s_boot_eth_url_logged = false;
+    hal_log("BOOT: ETH link/IP not ready yet (Web OTA URL will be logged when available)");
 
 #if MAIN_BT_SPP_AVAILABLE
     s_boot_bt_active = s_boot_bt_serial.begin("AgSteer-BootCLI");
@@ -525,8 +533,15 @@ static void bootInitCommunication(void) {
 #endif
 
     // UM980 GNSS UART Setup
-    um980SetupLoadDefaults(softConfigGet().gnss_baud);
-    um980SetupApply();
+    {
+        RuntimeConfig& rcfg = softConfigGet();
+        // Per-Port UART Baud und Rollen aus RuntimeConfig (NVS) laden
+        um980SetupSetBaud(0, rcfg.gnss_uart_a_baud);
+        um980SetupSetBaud(1, rcfg.gnss_uart_b_baud);
+        um980SetupSetRole(0, rcfg.gnss_uart_a_role);
+        um980SetupSetRole(1, rcfg.gnss_uart_b_role);
+        um980SetupApply();
+    }
 }
 
 // ===================================================================

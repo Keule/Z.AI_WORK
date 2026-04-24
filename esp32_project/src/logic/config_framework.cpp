@@ -137,6 +137,7 @@ bool configFrameworkSaveAll(void) {
         return false;
     }
 
+    // Alle Kategorien speichern (synct statische Werte nach RuntimeConfig)
     bool all_ok = true;
     for (size_t i = 0; i < s_category_count; i++) {
         const ConfigCategoryOps* ops = s_categories[i];
@@ -147,6 +148,16 @@ bool configFrameworkSaveAll(void) {
             }
         }
     }
+
+    // RuntimeConfig in NVS schreiben (einheitlicher Speicherpunkt)
+    if (all_ok) {
+        RuntimeConfig& cfg = softConfigGet();
+        if (!nvsConfigSave(cfg)) {
+            LOGE(TAG, "nvsConfigSave fehlgeschlagen");
+            all_ok = false;
+        }
+    }
+
     return all_ok;
 }
 

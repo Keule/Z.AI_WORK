@@ -32,8 +32,8 @@ static const char* TAG = "CFG-GNSS";
 
 static uint8_t  s_uart_a_role = UART_ROLE_DISABLED;
 static uint8_t  s_uart_b_role = UART_ROLE_DISABLED;
-static uint32_t s_uart_a_baud = 460800;
-static uint32_t s_uart_b_baud = 460800;
+static uint32_t s_uart_a_baud = 921600;
+static uint32_t s_uart_b_baud = 921600;
 
 // ===================================================================
 // Hilfsfunktionen
@@ -126,12 +126,29 @@ static bool config_gnss_apply(void) {
 }
 
 static bool config_gnss_load(void) {
-    LOGI(TAG, "GNSS-Konfiguration aus NVS geladen");
+    RuntimeConfig& cfg = softConfigGet();
+    // Per-Port UART Baud und Rollen aus RuntimeConfig (bereits aus NVS geladen) uebernehmen
+    s_uart_a_baud = cfg.gnss_uart_a_baud;
+    s_uart_b_baud = cfg.gnss_uart_b_baud;
+    s_uart_a_role = cfg.gnss_uart_a_role;
+    s_uart_b_role = cfg.gnss_uart_b_role;
+    LOGI(TAG, "GNSS-Konfiguration geladen (A: %s/%lu, B: %s/%lu)",
+         configGnssUartRoleName(s_uart_a_role), (unsigned long)s_uart_a_baud,
+         configGnssUartRoleName(s_uart_b_role), (unsigned long)s_uart_b_baud);
     return true;
 }
 
 static bool config_gnss_save(void) {
-    LOGI(TAG, "GNSS-Konfiguration in NVS gespeichert");
+    // Per-Port UART Werte zurueck in RuntimeConfig schreiben, damit
+    // nvsConfigSave() sie mit speichert
+    RuntimeConfig& cfg = softConfigGet();
+    cfg.gnss_uart_a_baud = s_uart_a_baud;
+    cfg.gnss_uart_b_baud = s_uart_b_baud;
+    cfg.gnss_uart_a_role = s_uart_a_role;
+    cfg.gnss_uart_b_role = s_uart_b_role;
+    LOGI(TAG, "GNSS-Konfiguration in RuntimeConfig gespeichert (A: %s/%lu, B: %s/%lu)",
+         configGnssUartRoleName(s_uart_a_role), (unsigned long)s_uart_a_baud,
+         configGnssUartRoleName(s_uart_b_role), (unsigned long)s_uart_b_baud);
     return true;
 }
 

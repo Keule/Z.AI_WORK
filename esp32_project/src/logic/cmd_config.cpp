@@ -23,12 +23,14 @@ extern Stream* s_cli_out;
 namespace {
 
 void cliCmdSave(int, char**) {
-    RuntimeConfig& cfg = softConfigGet();
-    if (nvsConfigSave(cfg)) {
+    // configFrameworkSaveAll() validiert alle Kategorien, synct statische
+    // Werte (z.B. UART per-port Baud/Rollen) nach RuntimeConfig und
+    // schreibt alles in einem Rutsch ins NVS.
+    if (configFrameworkSaveAll()) {
         s_cli_out->println("Config saved to NVS.");
         s_cli_out->println("WARNING: ntrip_password is stored in plaintext for now.");
     } else {
-        s_cli_out->println("ERROR: failed to save config to NVS.");
+        s_cli_out->println("ERROR: failed to save config to NVS (validation failed).");
     }
 }
 

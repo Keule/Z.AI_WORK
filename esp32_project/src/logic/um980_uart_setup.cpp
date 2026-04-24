@@ -29,7 +29,7 @@ static void resetConsoleFrame(void) {
 }
 
 void um980SetupLoadDefaults(uint32_t baud_default) {
-    const uint32_t baud = (baud_default == 0) ? 460800u : baud_default;
+    const uint32_t baud = (baud_default == 0) ? 921600u : baud_default;
     s_um980_setup.baud_a = baud;
     s_um980_setup.baud_b = baud;
     s_um980_setup.swap_a = false;

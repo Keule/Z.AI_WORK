@@ -64,6 +64,10 @@ void softConfigLoadDefaults(RuntimeConfig& cfg) {
 
     // GNSS
     cfg.gnss_baud = cfg::GNSS_BAUD;
+    cfg.gnss_uart_a_baud = cfg::GNSS_BAUD;
+    cfg.gnss_uart_b_baud = cfg::GNSS_BAUD;
+    cfg.gnss_uart_a_role = 0;  // DISABLED
+    cfg.gnss_uart_b_role = 0;  // DISABLED
 
     // Logging
     cfg.log_interval_ms = cfg::LOG_INTERVAL_MS;

@@ -9,8 +9,8 @@
 #include <Stream.h>
 
 struct Um980UartSetup {
-    uint32_t baud_a = 460800;
-    uint32_t baud_b = 460800;
+    uint32_t baud_a = 921600;
+    uint32_t baud_b = 921600;
     bool swap_a = false;
     bool swap_b = false;
     bool console_a = false;
