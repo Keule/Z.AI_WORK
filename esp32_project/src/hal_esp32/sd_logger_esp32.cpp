@@ -52,6 +52,7 @@
 // because it defines typedef enum OpMode which conflicts with module_interface.h's enum class OpMode
 extern "C" void opModeGpioPoll(void);
 extern "C" bool opModeIsPaused(void);
+extern "C" bool opModeIsControlActive(void);
 
 #include "logic/log_config.h"
 #define LOG_LOCAL_LEVEL LOG_LEVEL_MAINT
@@ -64,6 +65,7 @@ extern "C" bool opModeIsPaused(void);
 #include <SD.h>
 #include <freertos/FreeRTOS.h>
 #include <esp_heap_caps.h>
+#include <esp_task_wdt.h>
 
 #if FEAT_ENABLED(FEAT_COMPILED_NTRIP)
 #include "logic/ntrip.h"
@@ -403,15 +405,24 @@ static void maintTaskFunc(void* param) {
         maintEthMonitor();
 
         // -----------------------------------------------------------------
-        // 2. NTRIP state machine (every iteration = 1 s, blocking OK here)
+        // 2. NTRIP state machine (every iteration = 1 s)
+        //     Only connects in ACTIVE mode.  Feeds WDT around hal_tcp_connect()
+        //     which can block for up to 3 s and would starve the IDLE task.
         // -----------------------------------------------------------------
 #if FEAT_ENABLED(FEAT_COMPILED_NTRIP)
-        // ADR-005: NTRIP tick nur im ACTIVE-Modus (im PAUSED-Modus keine Verbindungsaufnahme)
-        if (opModeIsPaused()) {
-            // Im PAUSED-Modus: NTRIP Verbindung trennen wenn aktiv
-            // (wird in Step 4 mit enhanced maintTask Logic erweitert)
+        // NTRIP only runs when control is ACTIVE (not BOOTING, not PAUSED).
+        // Feed WDT before/after ntripTick() since hal_tcp_connect() can
+        // block for up to 3 seconds and starve the IDLE task on CPU 0.
+        if (!opModeIsControlActive()) {
+            // BOOTING or PAUSED — do not attempt NTRIP connections.
+            if (hal_tcp_connected()) {
+                LOGI("MAINT", "NTRIP disconnect (control not active)");
+                hal_tcp_disconnect();
+            }
         } else {
+            esp_task_wdt_reset();  // Feed WDT before potentially blocking call
             ntripTick();
+            esp_task_wdt_reset();  // Feed WDT after potentially blocking call
         }
 #endif
 

@@ -236,11 +236,9 @@ static void bootMaintRunCliSession(void) {
                 s_boot_eth_url_logged = true;
             }
         }
-#if FEAT_ENABLED(FEAT_COMPILED_NTRIP)
-        ntripTick();
-        ntripReadRtcm();
-        ntripForwardRtcm();
-#endif
+        // NOTE: NTRIP tick/read/forward is handled by maintTask (sdLoggerMaintInit).
+        // Do NOT call ntripTick() here — it blocks up to 5 s in hal_tcp_connect()
+        // and would starve the IDLE task / trigger WDT when maintTask runs concurrently.
         (void)handled_input;
         um980SetupConsoleTick();
         delay(10);

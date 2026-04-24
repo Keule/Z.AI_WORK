@@ -36,7 +36,7 @@ bool hal_tcp_connect(const char* host, uint16_t port) {
     }
 
     LOGI("HAL-TCP", "connecting to %s:%u", host, static_cast<unsigned>(port));
-    s_tcp_client.setTimeout(5000);  // 5s connect timeout
+    s_tcp_client.setTimeout(3000);  // 3s connect timeout (WDT-safe, IDLE task needs to run)
     const bool ok = s_tcp_client.connect(host, port);
     if (ok) {
         s_tcp_connected = true;
