@@ -394,6 +394,7 @@ static void maintTaskFunc(void* param) {
 
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(1000));  // 1 s base interval
+        esp_task_wdt_reset();  // Feed TWDT every iteration — prevents IDLE0 starvation
         loop_count++;
 
         // ADR-005: GPIO-Poll fuer Modus-Switch
@@ -460,7 +461,7 @@ static void maintTaskFunc(void* param) {
             SPIClass sdSPI(SD_SPI_BUS);
             sdSPI.begin(SD_SPI_SCK, SD_SPI_MISO, SD_SPI_MOSI, SD_CS);
 
-            if (SD.begin(SD_CS, sdSPI, 4000000, "/sd", 5)) {
+            if (SD.begin(SD_CS, sdSPI, 4000000, "/sd", 2)) {
                 LOGI("MAINT", "SD card mounted OK");
                 openLogFile();
                 s_logging_active = true;
@@ -498,7 +499,7 @@ static void maintTaskFunc(void* param) {
             SPIClass sdSPI(SD_SPI_BUS);
             sdSPI.begin(SD_SPI_SCK, SD_SPI_MISO, SD_SPI_MOSI, SD_CS);
 
-            if (SD.begin(SD_CS, sdSPI, 4000000, "/sd", 5)) {
+            if (SD.begin(SD_CS, sdSPI, 4000000, "/sd", 2)) {
                 // Re-open the log file in append mode
                 char path[32];
                 snprintf(path, sizeof(path), "/log_%03lu.csv", (unsigned long)s_file_counter);
