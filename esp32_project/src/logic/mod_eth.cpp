@@ -9,7 +9,6 @@
 #include "mod_eth.h"
 #include "hal/hal.h"
 #include "nvs_config.h"
-#include "net.h"
 
 #include "log_config.h"
 #define LOG_LOCAL_LEVEL LOG_LEVEL_NET
@@ -189,10 +188,8 @@ static bool eth_is_healthy(uint32_t now_ms) {
 // Pipeline
 // ===================================================================
 static ModuleResult eth_input(uint32_t now_ms) {
-    // Delegate to existing netPollReceive (will migrate later)
-    netPollReceive();
-
-    // Update freshness on any successful call
+    // NOTE: PGN RX is handled by mod_network.input(), NOT here.
+    // ETH only monitors link status.
     if (hal_net_is_connected()) {
         s_state.last_update_ms = now_ms;
         s_state.quality_ok = true;
@@ -203,15 +200,13 @@ static ModuleResult eth_input(uint32_t now_ms) {
 }
 
 static ModuleResult eth_process(uint32_t /*now_ms*/) {
-    // No-Op: PGN processing happens inside netPollReceive
+    // No-Op: PGN processing is handled by mod_network.
     return MOD_OK;
 }
 
 static ModuleResult eth_output(uint32_t now_ms) {
-    // Delegate to existing netSendAogFrames
-    netSendAogFrames();
-
-    // Refresh freshness
+    // NOTE: PGN TX is handled by mod_network.output(), NOT here.
+    // ETH only monitors link status.
     if (hal_net_is_connected()) {
         s_state.last_update_ms = now_ms;
         s_state.quality_ok = true;

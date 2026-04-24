@@ -5,15 +5,14 @@
  * Pipeline phases:
  *   input()   — snapshot g_nav state (IMU, WAS, safety, switches)
  *   process() — PID computation, safety/watchdog checks
- *   output()  — write actuator command via SPI
+ *   output()  — write actuator command via mod_actuator
  *
- * Migrated from control.cpp. Uses pidInit / pidCompute / pidReset
- * (pure math functions from control.h) with a module-local PidState.
+ * Migrated from control.cpp. PID math (pidInit / pidCompute / pidReset)
+ * is now fully inlined here — no dependency on old control.h.
  */
 
 #include "mod_steer.h"
-#include "control.h"       // pidInit, pidCompute, pidReset, PidState
-#include "actuator.h"
+#include "mod_actuator.h"
 #include "dependency_policy.h"
 #include "global_state.h"
 #include "features.h"
@@ -22,6 +21,82 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+
+// ===================================================================
+// PID Controller — inlined from control.cpp
+// ===================================================================
+
+/// PID controller state.
+struct PidState {
+    float kp;               // Proportional gain
+    float ki;               // Integral gain
+    float kd;               // Derivative gain
+    float integral;         // Accumulated integral term
+    float prev_error;       // Previous error for derivative
+    float output_min;       // Minimum output
+    float output_max;       // Maximum output
+    uint32_t last_update_ms;
+    bool   first_update;
+};
+
+static void pidInit(PidState* pid, float kp, float ki, float kd,
+                    float out_min, float out_max) {
+    pid->kp = kp;
+    pid->ki = ki;
+    pid->kd = kd;
+    pid->integral = 0.0f;
+    pid->prev_error = 0.0f;
+    pid->output_min = out_min;
+    pid->output_max = out_max;
+    pid->last_update_ms = hal_millis();
+    pid->first_update = true;
+}
+
+static void pidReset(PidState* pid) {
+    pid->integral = 0.0f;
+    pid->prev_error = 0.0f;
+    pid->first_update = true;
+}
+
+static float pidCompute(PidState* pid, float error, uint32_t dt_ms) {
+    if (dt_ms == 0) dt_ms = 5;  // safety: assume 5 ms (= 200 Hz)
+
+    float dt_s = dt_ms * 0.001f;
+
+    // Proportional
+    float p_term = pid->kp * error;
+
+    // Integral with anti-windup
+    pid->integral += error * dt_s;
+    float i_term = pid->ki * pid->integral;
+
+    // Clamp integral to prevent windup
+    if (i_term > pid->output_max) {
+        i_term = pid->output_max;
+        pid->integral = i_term / pid->ki;
+    } else if (i_term < pid->output_min) {
+        i_term = pid->output_min;
+        pid->integral = i_term / pid->ki;
+    }
+
+    // Derivative (on error, not measurement)
+    float d_term = 0.0f;
+    if (!pid->first_update && dt_s > 0.0f) {
+        float derivative = (error - pid->prev_error) / dt_s;
+        d_term = pid->kd * derivative;
+    }
+    pid->first_update = false;
+    pid->prev_error = error;
+
+    // Sum
+    float output = p_term + i_term + d_term;
+
+    // Clamp output
+    if (output > pid->output_max) output = pid->output_max;
+    if (output < pid->output_min) output = pid->output_min;
+
+    return output;
+}
 
 // ===================================================================
 // Constants
@@ -62,6 +137,9 @@ static ModState s_state;
 
 /// Module-local PID instance (migrated from control.cpp s_steer_pid).
 static PidState s_pid;
+
+/// Manual actuator mode (disables PID output).
+static bool s_manual_actuator_mode = false;
 
 /// Latest PID output command (for output phase + diagnostics).
 static uint16_t s_actuator_cmd = 0;
@@ -114,10 +192,6 @@ static void mod_steer_activate(void) {
     // Initialise our local PID with current config values.
     pidInit(&s_pid, cfg_kp, cfg_ki, cfg_kd, cfg_out_min, cfg_out_max);
 
-    // Also call controlInit() for backward compatibility during migration
-    // (initialises the legacy PID in control.cpp; will be removed later).
-    controlInit();
-
     s_state.detected = true;
     s_state.error_code = 0;
     s_state.last_update_ms = hal_millis();
@@ -138,7 +212,7 @@ static void mod_steer_deactivate(void) {
 
     // Drive actuator to neutral (0).
     if (feat::act()) {
-        (void)actuatorUpdate(0);
+        mod_actuator_set_cmd(0);
     }
 
     s_actuator_cmd = 0;
@@ -234,6 +308,7 @@ static ModuleResult mod_steer_process(uint32_t now_ms) {
         moduleSysIsActive(ModuleId::ACTUATOR) &&
         moduleSysIsActive(ModuleId::WAS) &&
         moduleSysIsActive(ModuleId::IMU) &&
+        !s_manual_actuator_mode &&
         s_snap.work_switch &&
         s_snap.steer_switch &&
         s_snap.speed_kmh >= MIN_STEER_SPEED_KMH;
@@ -287,8 +362,9 @@ static ModuleResult mod_steer_output(uint32_t now_ms) {
 
     if (!feat::act()) return MOD_OK;
     if (!moduleSysIsActive(ModuleId::ACTUATOR)) return MOD_OK;
+    if (s_manual_actuator_mode) return MOD_OK;
 
-    (void)actuatorUpdate(s_actuator_cmd);
+    mod_actuator_set_cmd(s_actuator_cmd);
     return MOD_OK;
 }
 
@@ -428,6 +504,7 @@ static bool mod_steer_debug(void) {
             s_snap.steer_switch ? "ON" : "off");
     hal_log("  pid_integral   = %.6f", s_pid.integral);
     hal_log("  pid_prev_error = %.4f", s_pid.prev_error);
+    hal_log("  manual_mode    = %s", s_manual_actuator_mode ? "yes" : "no");
     return true;
 }
 
@@ -442,6 +519,93 @@ void mod_steer_reset_pid(void) {
 
 uint16_t mod_steer_get_cmd(void) {
     return s_actuator_cmd;
+}
+
+void mod_steer_set_pid_gains(float kp, float ki, float kd) {
+    cfg_kp = kp;
+    cfg_ki = ki;
+    cfg_kd = kd;
+    s_pid.kp = kp;
+    s_pid.ki = ki;
+    s_pid.kd = kd;
+    pidReset(&s_pid);
+    hal_log("STEER: PID gains set via CLI: Kp=%.3f Ki=%.3f Kd=%.3f", kp, ki, kd);
+}
+
+void mod_steer_set_pid_output_limits(float out_min, float out_max) {
+    if (out_min < 0.0f) out_min = 0.0f;
+    if (out_max < out_min) out_max = out_min;
+    cfg_out_min = out_min;
+    cfg_out_max = out_max;
+    s_pid.output_min = out_min;
+    s_pid.output_max = out_max;
+    pidReset(&s_pid);
+    hal_log("STEER: PID output limits set via CLI: min=%.1f max=%.1f", out_min, out_max);
+}
+
+void mod_steer_get_pid_gains(float* kp, float* ki, float* kd) {
+    if (kp) *kp = cfg_kp;
+    if (ki) *ki = cfg_ki;
+    if (kd) *kd = cfg_kd;
+}
+
+void mod_steer_apply_agio_settings(uint8_t kp, uint8_t highPWM, uint8_t lowPWM,
+                                    uint8_t minPWM, uint8_t countsPerDegree,
+                                    int16_t wasOffset, uint8_t ackerman) {
+    // AgOpenGPS sends Kp as raw value (e.g. 30 = Kp 3.0)
+    float new_kp = static_cast<float>(kp);
+
+    float new_out_min = static_cast<float>(minPWM);
+    float new_out_max = static_cast<float>(highPWM);
+
+    // Only update if values actually changed
+    if (new_kp != s_pid.kp ||
+        new_out_min != s_pid.output_min ||
+        new_out_max != s_pid.output_max) {
+
+        cfg_kp = new_kp;
+        cfg_out_min = new_out_min;
+        cfg_out_max = new_out_max;
+        s_pid.kp = new_kp;
+        s_pid.output_min = new_out_min;
+        s_pid.output_max = new_out_max;
+
+        // Reset integral on gain change to prevent windup from old gains
+        s_pid.integral = 0.0f;
+        s_pid.prev_error = 0.0f;
+        s_pid.first_update = true;
+
+        uint8_t effective_lowPWM = static_cast<uint8_t>(minPWM * 1.2f);
+        hal_log("STEER: settings updated Kp=%.0f hiPWM=%u loPWM=%u(eff=%u) minPWM=%u counts=%u ack=%u",
+                (float)kp, (unsigned)highPWM, (unsigned)lowPWM,
+                (unsigned)effective_lowPWM, (unsigned)minPWM,
+                (unsigned)countsPerDegree, (unsigned)ackerman);
+    }
+
+    // Store all settings in global state for status reporting
+    {
+        StateLock lock;
+        g_nav.pid.settings_kp           = kp;
+        g_nav.pid.settings_high_pwm     = highPWM;
+        g_nav.pid.settings_low_pwm      = lowPWM;
+        g_nav.pid.settings_min_pwm      = minPWM;
+        g_nav.pid.settings_counts       = countsPerDegree;
+        g_nav.pid.settings_was_offset   = wasOffset;
+        g_nav.pid.settings_ackerman     = ackerman;
+        g_nav.pid.settings_received     = true;
+    }
+}
+
+void mod_steer_set_manual_actuator_mode(bool enabled) {
+    s_manual_actuator_mode = enabled;
+    if (enabled) {
+        pidReset(&s_pid);
+        s_actuator_cmd = 0;
+    }
+}
+
+bool mod_steer_manual_actuator_mode(void) {
+    return s_manual_actuator_mode;
 }
 
 // ===================================================================

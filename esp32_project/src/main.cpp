@@ -36,13 +36,13 @@
 #include "fw_config.h"
 #include "hal/hal.h"
 #include "hal_esp32/hal_impl.h"
-#include "logic/control.h"
 #include "logic/dependency_policy.h"
+#include "logic/mod_network.h"
+#include "logic/mod_steer.h"
 #include "logic/features.h"
 #include "logic/global_state.h"
 #include "logic/hw_status.h"
 #include "logic/module_interface.h"
-#include "logic/net.h"
 #include "logic/ntrip.h"
 #include "logic/nvs_config.h"
 #include "logic/runtime_config.h"
@@ -75,11 +75,6 @@
 #else
 #define MAIN_BT_SPP_AVAILABLE 0
 #endif
-
-// ===================================================================
-// Forward declarations for legacy AOG module registry (still in modules.cpp)
-// ===================================================================
-void modulesSendStartupErrors(void);
 
 // ===================================================================
 // Task handles
@@ -667,7 +662,7 @@ static void bootStartTasks(void) {
 
     // Startup-Errors melden (UDP wenn Netz up, sonst Serial)
     hal_delay_ms(100);
-    modulesSendStartupErrors();
+    mod_network_send_startup_errors();
 
     // Control Task auf Core 1 — runs the 200 Hz module pipeline
     if ((feat::act() && feat::safety()) && s_control_pipeline_ready) {

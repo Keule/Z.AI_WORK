@@ -12,7 +12,7 @@
 #include "config_pid.h"
 #include "config_framework.h"
 #include "runtime_config.h"
-#include "control.h"
+#include "mod_steer.h"
 
 #include "log_config.h"
 #define LOG_LOCAL_LEVEL LOG_LEVEL_CFG
@@ -51,7 +51,7 @@ static bool config_pid_validate(void) {
 
 static bool config_pid_apply(void) {
     RuntimeConfig& cfg = softConfigGet();
-    controlSetPidGains(cfg.pid_kp, cfg.pid_ki, cfg.pid_kd);
+    mod_steer_set_pid_gains(cfg.pid_kp, cfg.pid_ki, cfg.pid_kd);
     LOGI(TAG, "PID angewendet: Kp=%.3f Ki=%.3f Kd=%.3f",
          cfg.pid_kp, cfg.pid_ki, cfg.pid_kd);
     return true;
