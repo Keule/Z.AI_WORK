@@ -27,3 +27,37 @@ Stage Summary:
   - Each module has internal ModState with 4 fields
   - NVS keys prefixed with mod_<name>_
 - NEXT STEPS: Update main.cpp to use new module system, clean up old files
+
+---
+Task ID: 2
+Agent: Main
+Task: Add cfg_keys generic interface — all modules report their settable params
+
+Work Log:
+- Added CfgKeyDef type and cfg_keys() callback to ModuleOps2
+- Updated cmd_module.cpp to iterate cfg_keys() and display key=value pairs in module show
+- Updated all 13 modules with cfg_keys callback (7 with actual keys, 6 with nullptr)
+
+Stage Summary:
+- module show XY now shows all settable key/value pairs under Config: section
+- Generic mechanism — each module self-reports its editable keys
+
+---
+Task ID: 3
+Agent: Main
+Task: Add diag_info — human-readable health reasons for all modules
+
+Work Log:
+- Added diag_info() callback (void, returns void) to ModuleOps2 struct
+- Updated cmd_module.cpp: module show calls diag_info() after Health line; module debug outputs via s_cli_out instead of PASS/FAIL
+- Implemented diag_info() for all 13 modules with module-specific diagnostic messages
+- Rewrote all debug() functions to output via s_cli_out instead of LOGI/hal_log
+- Fixed missing #include "cli.h" in 11 module files for Stream type
+- Build successful, pushed to main (9240536)
+
+Stage Summary:
+- module show NTRIP now shows: "Reason: IDLE — not connected" or "Reason: connected, RTCM flowing (123 ms ago)"
+- module show ETH shows: "Reason: link up, 100 Mbps full-duplex, IP 192.168.2.64"
+- module debug XY now outputs full verbose diagnostic report in CLI (not just PASS/FAIL in log)
+- All 13 modules have meaningful diag_info output
+- Build: SUCCESS, RAM: 25.9%, Flash: 45.6%
