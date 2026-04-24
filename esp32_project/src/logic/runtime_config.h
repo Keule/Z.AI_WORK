@@ -40,6 +40,12 @@ struct RuntimeConfig {
     // Logging
     uint32_t log_interval_ms;
     bool     log_default_active;
+
+    // Module boot control — bitmask of modules to SKIP at boot activation.
+    // Compiled-in but NOT activated. Can be activated later via CLI.
+    // Uses ModuleId enum values as bit positions.
+    // Example: (1u << (uint8_t)ModuleId::NTRIP) | (1u << (uint8_t)ModuleId::LOGGING)
+    uint16_t module_boot_disabled;
 };
 
 /// Load cfg:: defaults into a RuntimeConfig instance.

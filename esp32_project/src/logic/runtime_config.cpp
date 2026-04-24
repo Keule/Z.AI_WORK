@@ -26,6 +26,7 @@
 #include <SPI.h>
 #include "fw_config.h"   // for SD_SPI_BUS, SD_SPI_SCK, SD_SPI_MISO, SD_SPI_MOSI, SD_CS
 #include "hal/hal.h"     // hal_sensor_spi_deinit(), hal_sensor_spi_reinit(), hal_delay_ms()
+#include <esp_task_wdt.h>
 #endif
 
 /// Path to NTRIP credentials file on SD card.
@@ -72,6 +73,9 @@ void softConfigLoadDefaults(RuntimeConfig& cfg) {
     // Logging
     cfg.log_interval_ms = cfg::LOG_INTERVAL_MS;
     cfg.log_default_active = cfg::LOG_DEFAULT_ACTIVE;
+
+    // Module boot control — all modules enabled at boot by default
+    cfg.module_boot_disabled = 0;
 }
 
 #if defined(ARDUINO_ARCH_ESP32)
@@ -122,7 +126,7 @@ static bool loadNtripFromSd(RuntimeConfig& cfg) {
     bool got_host = false;
     File f;
 
-    if (!SD.begin(SD_CS, sdSPI, 4000000, "/sd", 5)) {
+    if (!SD.begin(SD_CS, sdSPI, 4000000, "/sd", 2)) {
         goto cleanup;
     }
 

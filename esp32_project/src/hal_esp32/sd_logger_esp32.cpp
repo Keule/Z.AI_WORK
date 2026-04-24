@@ -455,6 +455,7 @@ static void maintTaskFunc(void* param) {
             // --- TRANSITION: OFF -> ON ---
             LOGI("MAINT", "log switch ON – starting logging session");
 
+            esp_task_wdt_reset();  // Feed WDT before blocking SD init
             sdBusClaim();
 
             // Init SD card on shared SPI2_HOST
@@ -477,6 +478,7 @@ static void maintTaskFunc(void* param) {
             sdSPI.end();
 
             sdBusRelease();
+            esp_task_wdt_reset();  // Feed WDT after blocking SD init
             was_active = true;
 
         } else if (!switch_debounced && was_active) {
@@ -493,6 +495,7 @@ static void maintTaskFunc(void* param) {
             // --- ACTIVE: flush ring buffer to SD (every 2 s) ---
             if (!sdLoggerHasRecords()) continue;
 
+            esp_task_wdt_reset();  // Feed WDT before blocking SD flush
             sdBusClaim();
 
             // Re-init SD (we close it after each flush)
@@ -529,6 +532,7 @@ static void maintTaskFunc(void* param) {
             sdSPI.end();
 
             sdBusRelease();
+            esp_task_wdt_reset();  // Feed WDT after blocking SD flush
         }
         // else: switch OFF and was_active=false -> nothing to do (idle)
     }

@@ -20,6 +20,7 @@
 
 #include "cli.h"
 #include "module_interface.h"
+#include "runtime_config.h"
 #include "hal/hal.h"
 
 #include <cstdio>
@@ -188,6 +189,52 @@ static void cliModuleDebug(const char* name) {
 }
 
 // ===================================================================
+// module boot — show/toggle boot-disabled modules
+// ===================================================================
+static void cliModuleBootShow(void) {
+    const auto& cfg = softConfigGet();
+    const uint16_t mask = cfg.module_boot_disabled;
+    s_cli_out->printf("Boot-disabled bitmask: 0x%04X (%u)
+", (unsigned)mask, (unsigned)mask);
+    s_cli_out->println("Modules:");
+    for (int i = 0; i < static_cast<int>(ModuleId::COUNT); i++) {
+        const char* name = moduleIdToName(static_cast<ModuleId>(i));
+        const bool disabled = (mask & (1u << i)) != 0;
+        s_cli_out->printf("  %-10s %s\n", name, disabled ? "SKIP" : "ON  ");
+    }
+    s_cli_out->println();
+    s_cli_out->println("Usage: module boot <on|off> <name>  (persisted via 'save')");
+}
+
+static void cliModuleBootSet(const char* action, const char* name) {
+    if (std::strcmp(action, "on") != 0 && std::strcmp(action, "off") != 0) {
+        s_cli_out->println("usage: module boot <on|off> <name>");
+        return;
+    }
+    const bool disable = (std::strcmp(action, "off") == 0);
+
+    ModuleId id = moduleIdFromName(name);
+    if (id >= ModuleId::COUNT) {
+        s_cli_out->printf("Unknown module: %s\n", name);
+        return;
+    }
+    if (id == ModuleId::ETH && disable) {
+        s_cli_out->println("ERROR: ETH is mandatory and cannot be boot-disabled.");
+        return;
+    }
+
+    auto& cfg = softConfigGet();
+    const uint16_t bit = 1u << static_cast<uint8_t>(id);
+    if (disable) {
+        cfg.module_boot_disabled |= bit;
+    } else {
+        cfg.module_boot_disabled &= ~bit;
+    }
+    s_cli_out->printf("%s: boot -> %s (use 'save' to persist to NVS)\n",
+                      name, disable ? "DISABLED" : "ENABLED");
+}
+
+// ===================================================================
 // mode config | work
 // ===================================================================
 static void cliModeSet(const char* mode_str) {
@@ -231,6 +278,16 @@ static void cliCmdModule(int argc, char** argv) {
         return;
     }
 
+    // module boot [on|off] [name]
+    if (std::strcmp(argv[1], "boot") == 0) {
+        if (argc < 3) {
+            cliModuleBootShow();
+        } else {
+            cliModuleBootSet(argv[2], argv[3] ? argv[3] : "");
+        }
+        return;
+    }
+
     // module <name> <action>
     if (argc >= 3) {
         const char* name = argv[2];
@@ -271,6 +328,6 @@ static void cliCmdMode(int argc, char** argv) {
 // Registration
 // ===================================================================
 void cmd_module_register(void) {
-    (void)cliRegisterCommand("module", &cliCmdModule, "Module control (list/show/set/load/apply/save/activate/deactivate/debug)");
+    (void)cliRegisterCommand("module", &cliCmdModule, "Module control (list/boot/show/set/load/apply/save/activate/deactivate/debug)");
     (void)cliRegisterCommand("mode", &cliCmdMode, "Operating mode (config|work)");
 }

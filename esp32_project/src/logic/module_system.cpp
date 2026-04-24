@@ -8,6 +8,7 @@
 
 #include "module_interface.h"
 #include "hal/hal.h"
+#include "runtime_config.h"  // for module_boot_disabled bitmask
 
 #include "log_config.h"
 #define LOG_LOCAL_LEVEL LOG_LEVEL_MOD
@@ -115,6 +116,15 @@ static bool checkDeps(const ModuleOps2* ops) {
         }
     }
     return true;
+}
+
+/// Check if a module is marked as boot-disabled in RuntimeConfig.
+/// Boot-disabled modules are compiled in but NOT activated at boot.
+/// They can be activated later via CLI: `module <name> activate`
+static bool isBootDisabled(ModuleId id) {
+    const auto& cfg = softConfigGet();
+    const uint16_t mask = cfg.module_boot_disabled;
+    return (mask & (1u << static_cast<uint8_t>(id))) != 0;
 }
 
 // ===================================================================
@@ -250,35 +260,46 @@ void moduleSysRunOutput(uint32_t now_ms) {
 void moduleSysBootActivate(void) {
     hal_log("MOD-SYS: === Boot Activation ===");
 
-    // Transport layer first
-    moduleSysActivate(ModuleId::ETH);
+    // Build activation order respecting dependencies.
+    // Skip modules marked as boot-disabled in RuntimeConfig.
+    static const ModuleId boot_order[] = {
+        ModuleId::ETH,        // Transport layer first
+        ModuleId::IMU,        // Sensors (no deps)
+        ModuleId::WAS,
+        ModuleId::GNSS,
+        ModuleId::SAFETY,
+        ModuleId::ACTUATOR,   // Depends on IMU + WAS
+        ModuleId::NETWORK,   // Protocol (depends on ETH or WIFI)
+        ModuleId::NTRIP,     // Services
+        ModuleId::LOGGING,
+        ModuleId::OTA,
+        ModuleId::STEER,     // Depends on IMU + WAS + ACTUATOR + SAFETY
+    };
+    static constexpr size_t kBootOrderCount = sizeof(boot_order) / sizeof(boot_order[0]);
 
-    // Sensors (no deps)
-    moduleSysActivate(ModuleId::IMU);
-    moduleSysActivate(ModuleId::WAS);
-    moduleSysActivate(ModuleId::GNSS);
-    moduleSysActivate(ModuleId::SAFETY);
-
-    // Actuator (depends on IMU + WAS)
-    moduleSysActivate(ModuleId::ACTUATOR);
-
-    // Protocol (depends on ETH or WIFI)
-    moduleSysActivate(ModuleId::NETWORK);
-
-    // Services
-    moduleSysActivate(ModuleId::NTRIP);
-    moduleSysActivate(ModuleId::LOGGING);
-    moduleSysActivate(ModuleId::OTA);
-
-    // Steer last (depends on IMU + WAS + ACTUATOR + SAFETY)
-    moduleSysActivate(ModuleId::STEER);
-
-    // WiFi/BT: only if ETH is not connected (fallback)
-    if (!hal_net_is_connected()) {
-        moduleSysActivate(ModuleId::WIFI);
-        moduleSysActivate(ModuleId::BT);
+    uint8_t skipped = 0;
+    for (size_t i = 0; i < kBootOrderCount; i++) {
+        const ModuleId id = boot_order[i];
+        if (isBootDisabled(id)) {
+            hal_log("MOD-SYS: %s -> SKIP (boot-disabled)", moduleIdToName(id));
+            skipped++;
+            continue;
+        }
+        moduleSysActivate(id);
     }
 
+    // WiFi/BT: only if ETH is not connected AND not boot-disabled (fallback)
+    if (!hal_net_is_connected() && !isBootDisabled(ModuleId::WIFI)) {
+        moduleSysActivate(ModuleId::WIFI);
+        if (!isBootDisabled(ModuleId::BT)) {
+            moduleSysActivate(ModuleId::BT);
+        }
+    }
+
+    if (skipped > 0) {
+        hal_log("MOD-SYS: %u module(s) boot-disabled (use 'module <name> activate' to enable)",
+                (unsigned)skipped);
+    }
     hal_log("MOD-SYS: === Boot Activation Complete ===");
 }
 
