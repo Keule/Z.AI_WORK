@@ -10,6 +10,7 @@
 #include "features.h"
 #include "dependency_policy.h"
 #include "hal/hal.h"
+#include "fw_config.h"
 
 #include "log_config.h"
 #define LOG_LOCAL_LEVEL LOG_LEVEL_MOD
@@ -63,16 +64,17 @@ static bool mod_gnss_is_enabled(void) {
 static void mod_gnss_activate(void) {
     s_state = {};
 
-    // UART A (instance 0) — primary GNSS receiver
-    // Pins are board-specific; pass -1 for rx_pin to use default.
-    s_uart_a_ready = hal_gnss_uart_begin(0, s_cfg_baud_a, -1, -1);
+    // UART A (instance 0) — primary GNSS receiver.
+    // Use board default pins from fw_config.h (GNSS_UART1_RX/TX).
+    s_uart_a_ready = hal_gnss_uart_begin(0, s_cfg_baud_a, GNSS_UART1_RX, GNSS_UART1_TX);
     if (!s_uart_a_ready) {
         LOGW("GNSS", "UART-A init failed (error 1)");
         s_state.error_code = 1;
     }
 
-    // UART B (instance 1) — secondary / RTCM receiver
-    s_uart_b_ready = hal_gnss_uart_begin(1, s_cfg_baud_b, -1, -1);
+    // UART B (instance 1) — secondary / RTCM receiver.
+    // Use board default pins from fw_config.h (GNSS_UART2_RX/TX).
+    s_uart_b_ready = hal_gnss_uart_begin(1, s_cfg_baud_b, GNSS_UART2_RX, GNSS_UART2_TX);
     if (!s_uart_b_ready) {
         LOGW("GNSS", "UART-B init failed (error 2)");
         // Only overwrite error code if not already set for UART-A
@@ -115,19 +117,31 @@ static bool mod_gnss_is_healthy(uint32_t now_ms) {
 
 static ModuleResult mod_gnss_input(uint32_t now_ms) {
     // Read UART data from GNSS receivers.
-    // NMEA parsing would go here (future implementation).
-    // For now, just check that UARTs are still ready.
+    // Also re-sync ready flags with HAL (UARTs may have been init'd
+    // elsewhere — e.g. hal_esp32_init_all — after our activate() failed).
 
     bool got_data = false;
 
-    if (s_uart_a_ready && hal_gnss_uart_is_ready(0)) {
+    // Re-sync ready flags with HAL every cycle
+    const bool hal_a = hal_gnss_uart_is_ready(0);
+    const bool hal_b = hal_gnss_uart_is_ready(1);
+    if (hal_a && !s_uart_a_ready) {
+        s_uart_a_ready = true;
+        LOGI("GNSS", "UART-A re-detected (HAL reports ready)");
+    }
+    if (hal_b && !s_uart_b_ready) {
+        s_uart_b_ready = true;
+        LOGI("GNSS", "UART-B re-detected (HAL reports ready)");
+    }
+
+    if (s_uart_a_ready && hal_a) {
         // Read NMEA from UART A (future: parse into g_nav.gnss)
         // uint8_t buf[256];
         // int rd = hal_uart_read(0, buf, sizeof(buf));
         got_data = true;
     }
 
-    if (s_uart_b_ready && hal_gnss_uart_is_ready(1)) {
+    if (s_uart_b_ready && hal_b) {
         // Read NMEA from UART B (future: parse)
         got_data = true;
     }
