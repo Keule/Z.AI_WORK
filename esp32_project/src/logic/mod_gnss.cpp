@@ -8,6 +8,7 @@
 
 #include "mod_gnss.h"
 #include "features.h"
+#include "dependency_policy.h"
 #include "hal/hal.h"
 
 #include "log_config.h"

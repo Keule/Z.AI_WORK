@@ -69,11 +69,3 @@ float steerAngleReadDeg(void) {
     if (!ok) return 0.0f;
     return s_last_was_angle_deg;
 }
-
-const ModuleOps was_ops = {
-    "WAS",
-    was_enabled_check,
-    wasInit,
-    wasUpdate,
-    was_health_check
-};

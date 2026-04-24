@@ -13,9 +13,7 @@
 #include "actuator.h"
 #include "global_state.h"
 #include "module_interface.h"
-#include "modules.h"
 #include "hal/hal.h"
-#include "op_mode.h"  // ADR-005: Operating Mode
 
 #include "log_config.h"
 #define LOG_LOCAL_LEVEL LOG_LEVEL_CTL
@@ -43,9 +41,9 @@ static bool s_manual_actuator_mode = false;
 static bool s_last_safety_logged = true;
 static bool s_safety_log_init = false;
 
-// Sensor modules for control-loop input phase (keep IMU -> WAS order).
-static const ModuleOps* const s_sensor_modules[] = { &imu_ops, &was_ops };
-static constexpr uint8_t k_sensor_count = sizeof(s_sensor_modules) / sizeof(s_sensor_modules[0]);
+// NOTE: controlStep() is retained for backward compatibility but the
+// new module pipeline (mod_safety, mod_imu, mod_was, mod_steer, mod_actuator)
+// supersedes it. Only controlInit() and PID math functions are actively used.
 
 // ===================================================================
 // PID Implementation
@@ -213,7 +211,7 @@ bool controlManualActuatorMode(void) {
 }
 
 bool controlReadSafety(void) {
-    const bool safety_active = moduleIsActive(MOD_SAFETY);
+    const bool safety_active = moduleSysIsActive(ModuleId::SAFETY);
     const bool safety_ok = safety_active ? hal_safety_ok() : true;
 
     if (!s_safety_log_init) {
@@ -224,14 +222,8 @@ bool controlReadSafety(void) {
              s_last_safety_logged ? "OK" : "KICK",
              safety_ok ? "OK" : "KICK");
 
-        // ADR-005: OpMode-Safety-Autotransition
-        // Lese aktuelle Geschwindigkeit fuer den Uebergang
-        float speed_kmh = 0.0f;
-        {
-            StateLock lock;
-            speed_kmh = g_nav.sw.gps_speed_kmh;
-        }
-        opModeSafetyChanged(safety_ok, speed_kmh);
+        // NOTE: OpMode safety auto-transition is now handled by the module system.
+        // When safety goes LOW in WORK mode, the mode will be managed externally.
 
         s_last_safety_logged = safety_ok;
     }
@@ -245,15 +237,13 @@ bool controlReadSafety(void) {
 }
 
 void controlReadSensors(SensorSnapshot& snap) {
-    for (uint8_t i = 0; i < k_sensor_count; i++) {
-        const ModuleOps* mod = s_sensor_modules[i];
-        if (!mod) continue;
-        if (mod == &imu_ops && !moduleIsActive(MOD_IMU)) continue;
-        if (mod == &was_ops && !moduleIsActive(MOD_ADS)) continue;
-        if (mod->isEnabled && !mod->isEnabled()) continue;
-        if (mod->update) {
-            (void)mod->update();
-        }
+    // Read IMU via direct function call (mod_imu.input() handles this in pipeline)
+    if (moduleSysIsActive(ModuleId::IMU)) {
+        (void)imuUpdate();
+    }
+    // Read WAS via direct function call (mod_was.input() handles this in pipeline)
+    if (moduleSysIsActive(ModuleId::WAS)) {
+        (void)wasUpdate();
     }
 
     {
@@ -262,7 +252,7 @@ void controlReadSensors(SensorSnapshot& snap) {
         snap.imu_quality = g_nav.imu.imu_quality_ok;
     }
 
-    const bool ads_active = feat::ads() && moduleIsActive(MOD_ADS);
+    const bool ads_active = feat::ads() && moduleSysIsActive(ModuleId::WAS);
     if (ads_active) {
         snap.was_angle_deg = wasGetAngleDeg();
         snap.was_raw = wasGetRaw();
@@ -283,9 +273,9 @@ void controlComputePid(const SensorSnapshot& snap,
                        uint32_t now_ms,
                        PidResult& result) {
     const bool steer_possible =
-        moduleIsActive(MOD_ACT) &&
-        moduleIsActive(MOD_ADS) &&
-        moduleIsActive(MOD_IMU) &&
+        moduleSysIsActive(ModuleId::ACTUATOR) &&
+        moduleSysIsActive(ModuleId::WAS) &&
+        moduleSysIsActive(ModuleId::IMU) &&
         !s_manual_actuator_mode &&
         safety_ok &&
         agio.auto_steer_enabled &&
@@ -312,7 +302,7 @@ void controlComputePid(const SensorSnapshot& snap,
 }
 
 void controlWriteActuator(uint16_t actuator_cmd) {
-    if (!feat::act() || !moduleIsActive(MOD_ACT)) {
+    if (!feat::act() || !moduleSysIsActive(ModuleId::ACTUATOR)) {
         return;
     }
     if (s_manual_actuator_mode) {

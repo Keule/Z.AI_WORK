@@ -31,9 +31,6 @@ int16_t wasGetRaw(void);
 uint32_t wasGetTimestampMs(void);
 bool wasGetQuality(void);
 
-/// Module registry entry for WAS.
-extern const ModuleOps was_ops;
-
 // --- Legacy compatibility (deprecated, remove after Phase 3) ---
 inline void steerAngleInit(void) { wasInit(); }
 float steerAngleReadDeg(void);

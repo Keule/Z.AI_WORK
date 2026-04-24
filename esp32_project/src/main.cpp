@@ -5,21 +5,21 @@
  * Target: LilyGO T-ETH-Lite-S3 (ESP32-S3-WROOM-1 + W5500 Ethernet)
  *
  * Three FreeRTOS tasks:
- *   - commTask   (Core 0): Ethernet/UDP, AOG protocol, HW status
- *   - maintTask  (Core 0): SD flush, NTRIP connect, ETH monitor [TASK-029]
- *   - controlTask (Core 1): 200 Hz control loop, PID, safety, actuators
+ *   - commTask    (Core 0): HW status monitoring, GPIO poll
+ *   - maintTask   (Core 0): SD flush, NTRIP connect, ETH monitor [TASK-029]
+ *   - controlTask (Core 1): 200 Hz module pipeline (input → process → output)
  *
  * NOTE: Hardware init is done in setup() via hal_esp32_init_all().
  *       Tasks do NOT re-initialize anything.
  *
- * Boot sequence (Step 4 refactoring):
- *   bootInitHal()          — NVS, HAL, logic module init, firmware version
- *   bootInitModules()      — modulesInit, module activation, SD OTA check
+ * Boot sequence (ADR-MODULE-002 refactoring):
+ *   bootInitHal()          — NVS, HAL, firmware version
+ *   bootInitModules()      — moduleSysInit, moduleSysBootActivate, SD OTA check
  *   bootInitConfig()       — Config framework, soft config, NVS check
  *   bootInitCommunication()— CLI, NTRIP, UM980 setup
- *   bootEnterMode()        — OpMode init, safety decision, boot complete
- *   bootInitControl()      — Pipeline check, control init, calibration
- *   bootStartTasks()       — Maintenance task, startup errors, FreeRTOS tasks
+ *   bootEnterMode()        — OpMode decision (CONFIG/WORK), safety check
+ *   bootInitControl()      — Pipeline check, calibration, HW status
+ *   bootStartTasks()       — Startup errors, FreeRTOS tasks
  */
 
 #include <Arduino.h>
@@ -41,10 +41,7 @@
 #include "logic/features.h"
 #include "logic/global_state.h"
 #include "logic/hw_status.h"
-#include "logic/imu.h"
-#include "logic/was.h"
-#include "logic/actuator.h"
-#include "logic/modules.h"
+#include "logic/module_interface.h"
 #include "logic/net.h"
 #include "logic/ntrip.h"
 #include "logic/nvs_config.h"
@@ -54,7 +51,6 @@
 #include "logic/cli.h"
 #include "logic/setup_wizard.h"
 #include "logic/um980_uart_setup.h"
-#include "logic/op_mode.h"
 #include "logic/config_framework.h"
 #include "logic/config_ntrip.h"
 #include "logic/config_network.h"
@@ -79,6 +75,11 @@
 #else
 #define MAIN_BT_SPP_AVAILABLE 0
 #endif
+
+// ===================================================================
+// Forward declarations for legacy AOG module registry (still in modules.cpp)
+// ===================================================================
+void modulesSendStartupErrors(void);
 
 // ===================================================================
 // Task handles
@@ -114,7 +115,6 @@ static bool s_boot_bt_active = false;
 // Shared boot state (valid during setup() only)
 // ===================================================================
 static bool s_control_pipeline_ready = false;
-static char s_pipeline_reason[64] = {0};
 
 // ===================================================================
 // NVS flash init helper
@@ -382,7 +382,11 @@ static void bootMaintStopServices(void) {
 // Boot Phase 1: HAL & Hardware Init
 //
 // Initialisiert: NVS Flash, HAL (SPI, ETH, GPIO, Sensor-Bus),
-//                Logik-Module (IMU, WAS, ACT), Firmware-Version, CLI
+//                Firmware-Version
+//
+// NOTE: imuInit(), wasInit(), actuatorInit() are NO LONGER called here.
+//       Module activation (moduleSysBootActivate) handles their init
+//       via mod_imu.activate(), mod_was.activate(), mod_actuator.activate().
 // ===================================================================
 static void bootInitHal(void) {
     uint32_t t_phase = hal_millis();
@@ -393,13 +397,6 @@ static void bootInitHal(void) {
     // HAL: SPI-Bus, W5500 Ethernet, GPIO, Safety-Pin, Sensor-Bus
     hal_esp32_init_all();
     hal_log("BOOT: hal_esp32_init_all ... %lu ms", (unsigned long)(hal_millis() - t_phase));
-
-    // Logik-Module initialisieren (nach HAL, vor Modul-Aktivierung)
-    t_phase = hal_millis();
-    if (feat::imu()) { imuInit(); }
-    if (feat::ads()) { wasInit(); }
-    if (feat::act()) { actuatorInit(); }
-    hal_log("BOOT: logic module init ... %lu ms", (unsigned long)(hal_millis() - t_phase));
 
     // Firmware-Version & Build-Info (immer ausgeben)
     {
@@ -416,49 +413,32 @@ static void bootInitHal(void) {
 }
 
 // ===================================================================
-// Boot Phase 2: Module System
+// Boot Phase 2: Module System (ADR-MODULE-002)
 //
-// Initialisiert: Modul-System (Hardware-Detection), Feature-Aktivierung,
+// Initialisiert: Unified module registry, boot activation,
 //                SD-Card OTA Check
 // ===================================================================
 static void bootInitModules(void) {
     uint32_t t_phase = hal_millis();
 
-    // Modul-System initialisieren — Hardware-Detection fuer alle Module
-    modulesInit();
-    hal_log("BOOT: modulesInit ... %lu ms", (unsigned long)(hal_millis() - t_phase));
+    // Unified module system init — registers all 13 modules
+    moduleSysInit();
 
-    // Feature-Module aktivieren (TASK-027)
-    // Reihenfolge beachten: ACT haengt von IMU+ADS ab, NTRIP von ETH
-    t_phase = hal_millis();
-    moduleActivate(MOD_IMU);     // IMU: keine Abhaengigkeiten
-    moduleActivate(MOD_ADS);     // ADS: keine Abhaengigkeiten
-    moduleActivate(MOD_ETH);     // ETH: keine Abhaengigkeiten (Pins von HAL init)
-    moduleActivate(MOD_GNSS);    // GNSS: keine Abhaengigkeiten
-    moduleActivate(MOD_SAFETY);  // SAFETY: keine Abhaengigkeiten
-    moduleActivate(MOD_ACT);     // ACT: haengt von IMU + ADS ab
+    // Boot activation — activates modules in dependency order:
+    // ETH first (transport), then sensors, then services, then steer last
+    moduleSysBootActivate();
+    hal_log("BOOT: module system init ... %lu ms", (unsigned long)(hal_millis() - t_phase));
 
-    if (moduleGetInfo(MOD_SD) && moduleGetInfo(MOD_SD)->hw_detected) {
-        moduleActivate(MOD_SD);
-        hal_log("Main: SD module active (card detected at boot)");
-    } else {
-        moduleDeactivate(MOD_SD);
-        hal_log("Main: SD module disabled (no SD card detected at boot)");
-    }
-#if FEAT_ENABLED(FEAT_COMPILED_NTRIP)
-    moduleActivate(MOD_NTRIP);   // NTRIP: haengt von ETH ab
-#endif
-    hal_log("BOOT: module activation ... %lu ms", (unsigned long)(hal_millis() - t_phase));
-
-    // SD-Card OTA Firmware Update (nur wenn MOD_SD aktiv)
-    if (moduleIsActive(MOD_SD)) {
-        if (isFirmwareUpdateAvailableOnSD()) {
-            hal_log("Main: firmware update detected on SD card – starting update");
-            updateFirmwareFromSD();
-            hal_log("Main: OTA update FAILED, continuing with current firmware");
+    // SD-Card OTA Firmware Update (if LOGGING module is active and detected SD)
+    if (moduleSysIsActive(ModuleId::LOGGING)) {
+        const auto* log_mod = moduleSysGet(ModuleId::LOGGING);
+        if (log_mod && log_mod->state.detected) {
+            if (isFirmwareUpdateAvailableOnSD()) {
+                hal_log("Main: firmware update detected on SD card – starting update");
+                updateFirmwareFromSD();
+                hal_log("Main: OTA update FAILED, continuing with current firmware");
+            }
         }
-    } else {
-        hal_log("Main: SD module inactive -> skip SD OTA check");
     }
 }
 
@@ -486,10 +466,10 @@ static void bootInitConfig(void) {
     t_phase = hal_millis();
     softConfigLoadDefaults(softConfigGet());
     nvsConfigLoad(softConfigGet());
-    if (moduleIsActive(MOD_SD)) {
+    if (moduleSysIsActive(ModuleId::LOGGING)) {
         softConfigLoadOverrides(softConfigGet());  // TASK-033: /ntrip.cfg von SD
     } else {
-        hal_log("Main: SD module inactive -> skip SD runtime config overrides");
+        hal_log("Main: LOGGING module inactive -> skip SD runtime config overrides");
     }
     hal_log("BOOT: config load ... %lu ms", (unsigned long)(hal_millis() - t_phase));
 
@@ -504,6 +484,10 @@ static void bootInitConfig(void) {
 // Boot Phase 4: Communication Init
 //
 // Initialisiert: CLI, NTRIP Client, UM980 UART Setup
+//
+// NOTE: ntripInit()/ntripSetConfig() still called here to initialize
+//       the NTRIP state machine (even though mod_ntrip.activate() also
+//       calls ntripInit() — idempotent).
 // ===================================================================
 static void bootInitCommunication(void) {
     // Serial CLI initialisieren
@@ -545,51 +529,65 @@ static void bootInitCommunication(void) {
 }
 
 // ===================================================================
-// Boot Phase 5: Operating Mode Decision (ADR-005)
+// Boot Phase 5: Operating Mode Decision (ADR-MODULE-002)
 //
-// Liest Safety-Pin und entscheidet: ACTIVE oder PAUSED (Boot CLI).
+// Liest Safety-Pin und entscheidet: CONFIG oder WORK mode.
+// Uses the new OpMode enum (CONFIG/WORK) from module_interface.h.
+//
+// NOTE: The old op_mode.h (BOOTING/ACTIVE/PAUSED) is NOT included
+//       to avoid OpMode name conflict with module_interface.h.
+//       GPIO mode toggle via safety pin is deferred to a future update.
 // ===================================================================
 static void bootEnterMode(void) {
     uint32_t t_phase = hal_millis();
 
-    opModeInit();
     const bool boot_safety_low = !hal_safety_ok();
 
     if (boot_safety_low) {
-        hal_log("BOOT: safety LOW → PAUSED Modus");
+        hal_log("BOOT: safety LOW → CONFIG mode");
+        // Safety LOW: offer boot CLI for configuration
         bootMaintStartServices();
         bootMaintRunCliSession();
         bootMaintStopServices();
+        // Stay in CONFIG mode (modeGet() defaults to CONFIG)
     } else {
-        hal_log("BOOT: safety HIGH → ACTIVE Modus");
+        // Safety HIGH: try to enter WORK mode
+        if (modeSet(OpMode::WORK)) {
+            hal_log("BOOT: safety HIGH → WORK mode");
+        } else {
+            hal_log("BOOT: safety HIGH but WORK mode rejected (pipeline incomplete)");
+            // Stay in CONFIG mode
+        }
     }
 
-    opModeBootComplete(boot_safety_low);
-
-    // GPIO Mode-Switch aktivieren (Safety-Pin als Toggle, Step 4)
-    opModeSetGpioEnabled(true);
-
-    hal_log("BOOT: mode decision ... %lu ms", (unsigned long)(hal_millis() - t_phase));
+    hal_log("BOOT: mode decision ... %lu ms (mode=%s)",
+            (unsigned long)(hal_millis() - t_phase),
+            modeToString(modeGet()));
 }
 
 // ===================================================================
 // Boot Phase 6: Control System Init
 //
-// Initialisiert: PID Controller, Lenkwinkel-Kalibrierung, HW-Status
+// Prueft Pipeline-Readiness, Kalibrierung, HW-Status.
+//
+// NOTE: controlInit() is NO LONGER called here — mod_steer.activate()
+//       already calls pidInit() + controlInit().
 // ===================================================================
 static void bootInitControl(void) {
     uint32_t t_phase = hal_millis();
 
-    // Control-Pipeline Pruefung (IMU + ADS + ACT muessen bereit sein)
-    s_pipeline_reason[0] = '\0';
+    // Control-Pipeline Pruefung via module system
     s_control_pipeline_ready =
-        moduleControlPipelineReady(s_pipeline_reason, sizeof(s_pipeline_reason));
+        moduleSysIsActive(ModuleId::IMU) &&
+        moduleSysIsActive(ModuleId::WAS) &&
+        moduleSysIsActive(ModuleId::ACTUATOR) &&
+        moduleSysIsActive(ModuleId::SAFETY) &&
+        moduleSysIsActive(ModuleId::STEER);
 
     if ((feat::act() && feat::safety()) && s_control_pipeline_ready) {
-        controlInit();
+        hal_log("Main: control pipeline ready (IMU+WAS+ACT+SAFETY+STEER)");
     } else if (feat::act() && feat::safety()) {
-        hal_log("Main: control pipeline not ready -> skip control init (%s)",
-                s_pipeline_reason[0] ? s_pipeline_reason : "unknown");
+        hal_log("Main: control pipeline NOT ready");
     } else {
         hal_log("Main: control loop feature disabled");
     }
@@ -640,7 +638,9 @@ static void bootInitControl(void) {
 // ===================================================================
 // Boot Phase 7: Start FreeRTOS Tasks
 //
-// Erstellt: maintTask (SD/NTRIP/ETH), controlTask, commTask
+// Erstellt: controlTask, commTask
+// NOTE: maintTask is created by mod_logging.activate() -> sdLoggerMaintInit()
+//       if SD card is detected, or by main.cpp for NTRIP-only scenarios.
 // ===================================================================
 static void bootStartTasks(void) {
     // -----------------------------------------------------------------
@@ -648,22 +648,28 @@ static void bootStartTasks(void) {
     // -----------------------------------------------------------------
     // WICHTIG (TASK-045): Der maintTask MUSS erstellt werden wenn NTRIP
     // aktiv ist, da ntripTick() blocking TCP-Connect enthaelt (5s Timeout).
-    // Laut ADR-002 darf commTask keine blockierenden Connect-Operationen
-    // ausfuehren. Auf dem ESP32 Classic kann ETH DMA den IDLE-Task auf
-    // Core 0 verdraengen und WDT ausloesen. Der maintTask laeuft auf
-    // niedrigster Prioritaet und haelt den IDLE-Task nicht auf.
+    // mod_logging.activate() already calls sdLoggerMaintInit() if SD is
+    // detected.  But if only NTRIP is active (no SD), we must start it here.
     // -----------------------------------------------------------------
-    if (moduleIsActive(MOD_SD) || moduleIsActive(MOD_NTRIP)) {
+    const bool logging_active = moduleSysIsActive(ModuleId::LOGGING);
+    const auto* log_mod = moduleSysGet(ModuleId::LOGGING);
+    const bool sd_detected = logging_active && log_mod && log_mod->state.detected;
+    const bool ntrip_active = moduleSysIsActive(ModuleId::NTRIP);
+
+    if (!sd_detected && ntrip_active) {
+        // NTRIP active but no SD — maintTask needed for ntripTick()
         sdLoggerMaintInit();
+    } else if (sd_detected) {
+        hal_log("Main: maintTask already started by LOGGING module");
     } else {
-        hal_log("Main: maintenance task not started (MOD_SD and MOD_NTRIP inactive)");
+        hal_log("Main: maintenance task not started (LOGGING and NTRIP inactive)");
     }
 
     // Startup-Errors melden (UDP wenn Netz up, sonst Serial)
     hal_delay_ms(100);
     modulesSendStartupErrors();
 
-    // Control Task auf Core 1
+    // Control Task auf Core 1 — runs the 200 Hz module pipeline
     if ((feat::act() && feat::safety()) && s_control_pipeline_ready) {
         xTaskCreatePinnedToCore(
             controlTaskFunc,
@@ -678,12 +684,11 @@ static void bootStartTasks(void) {
         if (!(feat::act() && feat::safety())) {
             hal_log("Main: control task not started (feature disabled)");
         } else {
-            hal_log("Main: control task not started (pipeline inactive: %s)",
-                    s_pipeline_reason[0] ? s_pipeline_reason : "unknown");
+            hal_log("Main: control task not started (pipeline inactive)");
         }
     }
 
-    // Communication Task auf Core 0
+    // Communication Task auf Core 0 — HW status monitoring
     xTaskCreatePinnedToCore(
         commTaskFunc,
         "comm",
@@ -699,6 +704,9 @@ static void bootStartTasks(void) {
 
 // ===================================================================
 // Control Task – runs at 200 Hz on Core 1
+//
+// Executes the unified module pipeline: input → process → output
+// Only runs when mode == WORK.
 // ===================================================================
 static void controlTaskFunc(void* param) {
     (void)param;
@@ -711,27 +719,19 @@ static void controlTaskFunc(void* param) {
     TickType_t next_wake = xTaskGetTickCount();
     uint32_t ctrl_dbg_count = 0;
     uint32_t ctrl_freq_start = hal_millis();
-    uint32_t log_divider = 0;
 #if FEAT_ENABLED(FEAT_COMPILED_IMU) || FEAT_ENABLED(FEAT_COMPILED_ADS) || FEAT_ENABLED(FEAT_COMPILED_ACT)
     uint32_t last_spi_tm_ms = 0;
 #endif
 
     for (;;) {
-        // ----------------------------- Input / Processing -----------------------------
-        // ADR-005: controlTask fuehrt Pipeline nur im ACTIVE-Modus aus
-        if (opModeIsControlActive()) {
-            controlStep();
-        }
+        // ADR-MODULE-002: run module pipeline only in WORK mode
+        if (modeGet() == OpMode::WORK) {
+            const uint32_t now_ms = hal_millis();
 
-        // ------------------------------- Output phase --------------------------------
-        // Keep potentially blocking logger writes out of every 200 Hz iteration.
-        // Log only every 20 cycles (= 10 Hz).
-        log_divider++;
-        if (log_divider >= 20) {
-            log_divider = 0;
-            if (moduleIsActive(MOD_SD)) {
-                sdLoggerRecord();
-            }
+            // === Module Pipeline ===
+            moduleSysRunInput(now_ms);
+            moduleSysRunProcess(now_ms);
+            moduleSysRunOutput(now_ms);
         }
 
         if (MAIN_VERBOSE_TASK_DBG) {
@@ -791,6 +791,9 @@ static void controlTaskFunc(void* param) {
 
 // ===================================================================
 // Communication Task – runs on Core 0
+//
+// HW status monitoring only. All module I/O (net, ntrip, etc.) is
+// handled by the controlTask pipeline or by the maintTask.
 // ===================================================================
 static void commTaskFunc(void* param) {
     (void)param;
@@ -813,26 +816,7 @@ static void commTaskFunc(void* param) {
     uint8_t last_hw_err_count = 0xFF;
 
     for (;;) {
-        // ADR-005: commTask fuehrt Pipeline nur im ACTIVE-Modus aus
-        if (opModeIsCommActive()) {
-            // ---------------------------------- Input -----------------------------------
-            netPollReceive();
-#if FEAT_ENABLED(FEAT_COMPILED_NTRIP)
-            ntripReadRtcm();
-#endif
-
-            // -------------------------------- Processing --------------------------------
-            modulesUpdateStatus();
-#if FEAT_ENABLED(FEAT_COMPILED_NTRIP)
-            // TASK-029: ntripTick() runs in maintTask (blocking TCP connect there is okay).
-#endif
-
-            // ---------------------------------- Output ----------------------------------
-            netSendAogFrames();
-#if FEAT_ENABLED(FEAT_COMPILED_NTRIP)
-            ntripForwardRtcm();
-#endif
-        }
+        // NO pipeline here — controlTask handles all module I/O
 
         if (MAIN_VERBOSE_TASK_DBG) {
             // Heartbeat DBG every 5s (= every 500 iterations)
@@ -867,24 +851,23 @@ static void commTaskFunc(void* param) {
 
             const bool steer_angle_valid =
                 dep_policy::isSteerAngleInputValid(now, steer_ts_ms, steer_quality_ok);
-            const ModuleHwStatus* hw = modulesGetHwStatus();
-            const bool imu_hw_detected = hw ? hw->imu_detected : false;
+
+            // Use new module system for IMU HW detection
+            const bool imu_hw_detected = moduleSysIsActive(ModuleId::IMU) &&
+                moduleSysGet(ModuleId::IMU)->state.detected;
             const bool imu_data_valid =
                 imu_hw_detected && dep_policy::isImuInputValid(now, imu_ts_ms, imu_quality_ok);
-            const bool imu_active = moduleIsActive(MOD_IMU);
-            const bool ads_active = moduleIsActive(MOD_ADS);
-            const bool safety_active = moduleIsActive(MOD_SAFETY);
 
-            // Hardware status monitoring via hw_status subsystem
-            uint8_t err_count = hwStatusUpdate(
-                hal_net_is_connected(),     // Ethernet connected
-                safety_ok,                  // Safety circuit OK
-                steer_angle_valid,          // steer angle freshness + plausibility
-                imu_hw_detected,            // IMU hardware presence; data quality remains in g_nav
-                moduleIsActive(MOD_NTRIP),  // NTRIP module active — TASK-030
-                imu_active,                 // do not treat inactive module as runtime error
-                ads_active,                 // do not treat inactive module as runtime error
-                safety_active               // do not treat inactive module as runtime error
+            // Use new module system for module active checks
+            const uint8_t err_count = hwStatusUpdate(
+                hal_net_is_connected(),                     // Ethernet connected
+                safety_ok,                                  // Safety circuit OK
+                steer_angle_valid,                          // steer angle freshness + plausibility
+                imu_hw_detected,                            // IMU hardware presence
+                moduleSysIsActive(ModuleId::NTRIP),         // NTRIP module active
+                moduleSysIsActive(ModuleId::IMU),           // IMU module active
+                moduleSysIsActive(ModuleId::WAS),           // WAS module active
+                moduleSysIsActive(ModuleId::SAFETY)         // SAFETY module active
             );
 
             (void)imu_data_valid;
@@ -904,7 +887,8 @@ static void commTaskFunc(void* param) {
                 hal_log("COMM: %u HW error(s) active", (unsigned)err_count);
             }
         }
-        //Serial.println("[DBG-COMM] looped");
+
+        // Serial.println("[DBG-COMM] looped");
         vTaskDelayUntil(&next_wake, poll_interval);
     }
 }
@@ -918,7 +902,7 @@ void setup() {
     // Phase 1: Hardware & HAL
     bootInitHal();
 
-    // Phase 2: Module System
+    // Phase 2: Module System (ADR-MODULE-002)
     bootInitModules();
 
     // Phase 3: Configuration
@@ -997,7 +981,7 @@ static void loopTelemetry(void) {
 
     const uint32_t imu_age_ms =
         (imu_timestamp_ms == 0U) ? 0U : (uint32_t)(now - imu_timestamp_ms);
-    hal_log("STAT: hd=%.1f st=%.1f raw=%d safety=%s work=%s steer=%s spd=%.1f wdog=%s pid=%d tgt=%.1f roll_deg=%.2f yaw_rate_dps=%.2f imu_quality_ok=%s imu_age_ms=%lu net=%s cfg=%s",
+    hal_log("STAT: hd=%.1f st=%.1f raw=%d safety=%s work=%s steer=%s spd=%.1f wdog=%s pid=%d tgt=%.1f roll_deg=%.2f yaw_rate_dps=%.2f imu_quality_ok=%s imu_age_ms=%lu net=%s cfg=%s mode=%s",
             heading_deg,
             steer_angle_deg,
             steer_angle_raw,
@@ -1013,7 +997,8 @@ static void loopTelemetry(void) {
             imu_quality_ok ? "Y" : "N",
             (unsigned long)imu_age_ms,
             hal_net_is_connected() ? "UP" : "DOWN",
-            settings_received ? "Y" : "N");
+            settings_received ? "Y" : "N",
+            modeToString(modeGet()));
 }
 
 /// Serial CLI Input-Verarbeitung
@@ -1041,6 +1026,7 @@ static void loopCli(void) {
             }
         } else if (s_cli_len + 1 < sizeof(s_cli_buf)) {
             s_cli_buf[s_cli_len++] = static_cast<char>(ch);
+            Serial.print(static_cast<char>(ch));
         }
     }
 }
@@ -1067,8 +1053,8 @@ static void loopDebugHeartbeat(void) {
 }
 
 void loop() {
-    // ADR-005: Setup Wizard nur im PAUSED-Modus
-    if (opModeIsPaused() && setupWizardConsumePending()) {
+    // Setup Wizard only in CONFIG mode
+    if (modeGet() == OpMode::CONFIG && setupWizardConsumePending()) {
         setupWizardRun();
     }
 

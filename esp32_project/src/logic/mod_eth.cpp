@@ -16,6 +16,7 @@
 #include "esp_log.h"
 #include "log_ext.h"
 
+#include <cstdio>
 #include <cstring>
 
 #if defined(ARDUINO_ARCH_ESP32)

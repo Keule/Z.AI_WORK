@@ -24,8 +24,5 @@ bool actuatorUpdate(uint16_t cmd);
 /// Actuator has no freshness concept — always healthy if enabled.
 bool actuatorIsHealthy(uint32_t now_ms);
 
-/// Module registry entry for actuator.
-extern const ModuleOps actuator_ops;
-
 // --- Legacy compatibility (deprecated) ---
 inline void actuatorWriteCommand(uint16_t cmd) { (void)actuatorUpdate(cmd); }

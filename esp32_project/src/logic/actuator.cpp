@@ -32,11 +32,3 @@ bool actuatorUpdate(uint16_t cmd) {
 bool actuatorIsHealthy(uint32_t /*now_ms*/) {
     return true;
 }
-
-const ModuleOps actuator_ops = {
-    "ACT",
-    actuator_enabled_check,
-    actuatorInit,
-    nullptr,
-    actuatorIsHealthy
-};

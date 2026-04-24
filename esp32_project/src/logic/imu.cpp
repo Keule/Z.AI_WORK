@@ -57,25 +57,3 @@ bool imuIsHealthy(uint32_t now_ms) {
                                g_nav.imu.imu_timestamp_ms,
                                dep_policy::IMU_FRESHNESS_TIMEOUT_MS);
 }
-
-// Module ops — must be at file scope (not in anonymous namespace)
-// so control.cpp can reference imu_ops
-namespace {
-
-static bool imu_module_enabled_check() {
-    return feat::imu();
-}
-
-static bool imu_module_health_check(uint32_t now_ms) {
-    return imuIsHealthy(now_ms);
-}
-
-}  // anonymous namespace
-
-const ModuleOps imu_ops = {
-    "IMU",
-    imu_module_enabled_check,
-    imuInit,
-    imuUpdate,
-    imu_module_health_check
-};

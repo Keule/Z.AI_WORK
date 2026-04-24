@@ -24,6 +24,3 @@ bool imuUpdate(void);
 
 /// Check if IMU data is fresh.
 bool imuIsHealthy(uint32_t now_ms);
-
-/// Module registry entry for IMU.
-extern const ModuleOps imu_ops;
