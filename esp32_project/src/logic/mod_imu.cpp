@@ -19,6 +19,10 @@
 
 #include <cstdio>
 
+#include "cli.h"
+
+extern Stream* s_cli_out;
+
 // ===================================================================
 // Freshness timeout
 // ===================================================================
@@ -176,11 +180,32 @@ static bool mod_imu_cfg_show(void) {
 }
 
 // ===================================================================
+// Diagnostic info
+// ===================================================================
+
+static void mod_imu_diag_info(void) {
+    uint32_t now = hal_millis();
+    uint32_t ago = (s_state.last_update_ms > 0) ? (now - s_state.last_update_ms) : 0;
+    if (!s_state.detected) {
+        s_cli_out->printf("  Reason:    BNO085 not detected on SPI (error 1)\n");
+    } else if (s_state.error_code == 2) {
+        s_cli_out->printf("  Reason:    SPI read failed (error 2)\n");
+    } else if (s_state.error_code == 3) {
+        s_cli_out->printf("  Reason:    implausible data (error 3)\n");
+    } else if (!s_state.quality_ok || ago > FRESHNESS_TIMEOUT_MS) {
+        s_cli_out->printf("  Reason:    no IMU data for %lu ms (timeout %lu ms)\n",
+            (unsigned long)ago, (unsigned long)FRESHNESS_TIMEOUT_MS);
+    } else {
+        s_cli_out->printf("  Reason:    OK — BNO085 active, data %lu ms ago\n", (unsigned long)ago);
+    }
+}
+
+// ===================================================================
 // Debug
 // ===================================================================
 
 static bool mod_imu_debug(void) {
-    LOGI("IMU", "debug: detected=%s quality_ok=%s error=%ld last_update=%lu",
+    s_cli_out->printf("  IMU debug: detected=%s quality_ok=%s error=%ld last_update=%lu\n",
          s_state.detected ? "yes" : "no",
          s_state.quality_ok ? "yes" : "no",
          static_cast<long>(s_state.error_code),
@@ -209,6 +234,7 @@ const ModuleOps2 mod_imu_ops = {
     /* cfg_save    */ mod_imu_cfg_save,
     /* cfg_load    */ mod_imu_cfg_load,
     /* cfg_show    */ mod_imu_cfg_show,
+    /* diag_info   */ mod_imu_diag_info,
     /* debug       */ mod_imu_debug,
     /* deps        */ s_deps
 };

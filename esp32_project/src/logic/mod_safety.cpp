@@ -20,6 +20,10 @@
 
 #include <cstdio>
 
+#include "cli.h"
+
+extern Stream* s_cli_out;
+
 // ===================================================================
 // Internal state
 // ===================================================================
@@ -147,8 +151,20 @@ static bool mod_safety_cfg_show(void) {
 // Debug
 // ===================================================================
 
+static void mod_safety_diag_info(void) {
+    if (s_state.error_code == 1) {
+        s_cli_out->printf("  Reason:    SAFETY KICK detected — safety loop open\n");
+    } else if (s_state.error_code == 2) {
+        s_cli_out->printf("  Reason:    watchdog triggered — no AgIO data received\n");
+    } else if (!hal_safety_ok()) {
+        s_cli_out->printf("  Reason:    safety GPIO LOW\n");
+    } else {
+        s_cli_out->printf("  Reason:    OK — safety GPIO HIGH, watchdog OK\n");
+    }
+}
+
 static bool mod_safety_debug(void) {
-    LOGI("SAFETY", "debug: detected=%s error=%ld safety_gpio=%s",
+    s_cli_out->printf("SAFETY debug: detected=%s error=%ld safety_gpio=%s\n",
          s_state.detected ? "yes" : "no",
          static_cast<long>(s_state.error_code),
          hal_safety_ok() ? "OK" : "KICK");
@@ -176,6 +192,7 @@ const ModuleOps2 mod_safety_ops = {
     /* cfg_save    */ mod_safety_cfg_save,
     /* cfg_load    */ mod_safety_cfg_load,
     /* cfg_show    */ mod_safety_cfg_show,
+    /* diag_info   */ mod_safety_diag_info,
     /* debug       */ mod_safety_debug,
     /* deps        */ s_deps
 };

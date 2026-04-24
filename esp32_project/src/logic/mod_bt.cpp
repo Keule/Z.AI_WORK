@@ -19,6 +19,10 @@
 #include <cstring>
 #include <cstdio>
 
+#include "cli.h"
+
+extern Stream* s_cli_out;
+
 #if defined(ARDUINO_ARCH_ESP32)
 #if defined(__has_include) && __has_include(<BluetoothSerial.h>)
 #include <BluetoothSerial.h>
@@ -255,10 +259,21 @@ static bool bt_cfg_show(void) {
 }
 
 // ===================================================================
+// Diag info
+// ===================================================================
+static void mod_bt_diag_info(void) {
+    if (!s_state.detected) {
+        s_cli_out->printf("  Reason:    BT not initialized (error %ld)\n", (long)s_state.error_code);
+    } else {
+        s_cli_out->printf("  Reason:    OK — SPP \"%s\" active\n", s_cfg.name);
+    }
+}
+
+// ===================================================================
 // Debug
 // ===================================================================
 static bool bt_debug(void) {
-    LOGI(TAG, "=== BT Debug ===");
+    s_cli_out->printf("=== BT Debug ===\n");
     bt_cfg_show();
     return true;
 }
@@ -294,6 +309,7 @@ const ModuleOps2 mod_bt_ops = {
     .cfg_load  = bt_cfg_load,
     .cfg_show  = bt_cfg_show,
 
+    .diag_info = mod_bt_diag_info,
     .debug = bt_debug,
 
     .deps = s_deps,

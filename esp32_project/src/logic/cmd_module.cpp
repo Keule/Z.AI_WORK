@@ -80,8 +80,13 @@ static void cliModuleShow(const char* name) {
     s_cli_out->printf("  LastUpd:   %lu ms ago\n",
                       (unsigned long)(hal_millis() - rt->state.last_update_ms));
     s_cli_out->printf("  ErrorCode: %ld\n", (long)rt->state.error_code);
-    s_cli_out->printf("  Healthy:   %s\n",
-                      moduleSysIsHealthy(id, hal_millis()) ? "YES" : "NO");
+    const bool healthy = moduleSysIsHealthy(id, hal_millis());
+    s_cli_out->printf("  Healthy:   %s\n", healthy ? "YES" : "NO");
+
+    // Diagnostic reason — one-line explanation of health state
+    if (ops->diag_info) {
+        ops->diag_info();
+    }
 
     // Dependencies
     if (ops->deps) {
@@ -206,9 +211,9 @@ static void cliModuleDebug(const char* name) {
     if (id >= ModuleId::COUNT) { s_cli_out->printf("Unknown module: %s\n", name); return; }
     const auto* ops = moduleSysOps(id);
     if (!ops->debug) { s_cli_out->println("Module has no debug interface."); return; }
-    s_cli_out->printf("%s: running lifecycle debug...\n", name);
-    const bool ok = ops->debug();
-    s_cli_out->printf("%s: debug -> %s\n", name, ok ? "PASS" : "FAIL");
+    s_cli_out->printf("=== %s Diagnostics ===\n", name);
+    ops->debug();
+    s_cli_out->println("=== Done ===");
 }
 
 // ===================================================================

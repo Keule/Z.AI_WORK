@@ -21,6 +21,10 @@
 #include <cstdio>
 #include <cstring>
 
+#include "cli.h"
+
+extern Stream* s_cli_out;
+
 // ===================================================================
 // Error codes (module-specific)
 // ===================================================================
@@ -194,16 +198,25 @@ static bool mod_ota_cfg_show(void) {
 }
 
 // ===================================================================
+// Diag info
+// ===================================================================
+
+static void mod_ota_diag_info(void) {
+    s_cli_out->printf("  Reason:    stub module — auto_check=%s\n",
+        cfg_auto_check ? "true" : "false");
+}
+
+// ===================================================================
 // Debug
 // ===================================================================
 
 static bool mod_ota_debug(void) {
-    hal_log("OTA debug (stub):");
-    hal_log("  detected    = %s", s_state.detected ? "yes" : "no");
-    hal_log("  quality_ok  = %s", s_state.quality_ok ? "yes" : "no");
-    hal_log("  error_code  = %lu", (unsigned long)s_state.error_code);
-    hal_log("  last_update = %lu ms", (unsigned long)s_state.last_update_ms);
-    hal_log("  auto_check  = %s", cfg_auto_check ? "true" : "false");
+    s_cli_out->printf("OTA debug (stub):\n");
+    s_cli_out->printf("  detected    = %s\n", s_state.detected ? "yes" : "no");
+    s_cli_out->printf("  quality_ok  = %s\n", s_state.quality_ok ? "yes" : "no");
+    s_cli_out->printf("  error_code  = %lu\n", (unsigned long)s_state.error_code);
+    s_cli_out->printf("  last_update = %lu ms\n", (unsigned long)s_state.last_update_ms);
+    s_cli_out->printf("  auto_check  = %s\n", cfg_auto_check ? "true" : "false");
     return true;
 }
 
@@ -242,6 +255,7 @@ const ModuleOps2 mod_ota_ops = {
     .cfg_load    = mod_ota_cfg_load,
     .cfg_show    = mod_ota_cfg_show,
 
+    .diag_info   = mod_ota_diag_info,
     .debug       = mod_ota_debug,
 
     .deps        = s_deps,

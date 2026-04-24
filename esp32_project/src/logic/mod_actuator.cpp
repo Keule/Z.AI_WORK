@@ -17,6 +17,10 @@
 
 #include <cstdio>
 
+#include "cli.h"
+
+extern Stream* s_cli_out;
+
 // ===================================================================
 // Internal state
 // ===================================================================
@@ -133,11 +137,25 @@ static bool mod_actuator_cfg_show(void) {
 }
 
 // ===================================================================
+// Diagnostic info
+// ===================================================================
+
+static void mod_actuator_diag_info(void) {
+    if (!s_state.detected) {
+        s_cli_out->printf("  Reason:    DRV8263 not detected on SPI (error 1)\n");
+    } else if (s_state.error_code != 0) {
+        s_cli_out->printf("  Reason:    error code %ld\n", (long)s_state.error_code);
+    } else {
+        s_cli_out->printf("  Reason:    OK — DRV8263 active, cmd=%u\n", (unsigned)s_current_cmd);
+    }
+}
+
+// ===================================================================
 // Debug
 // ===================================================================
 
 static bool mod_actuator_debug(void) {
-    LOGI("ACT", "debug: detected=%s error=%ld cmd=%u",
+    s_cli_out->printf("  ACT debug: detected=%s error=%ld cmd=%u\n",
          s_state.detected ? "yes" : "no",
          static_cast<long>(s_state.error_code),
          static_cast<unsigned>(s_current_cmd));
@@ -177,6 +195,7 @@ const ModuleOps2 mod_actuator_ops = {
     /* cfg_save    */ mod_actuator_cfg_save,
     /* cfg_load    */ mod_actuator_cfg_load,
     /* cfg_show    */ mod_actuator_cfg_show,
+    /* diag_info   */ mod_actuator_diag_info,
     /* debug       */ mod_actuator_debug,
     /* deps        */ s_deps
 };

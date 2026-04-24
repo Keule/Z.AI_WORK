@@ -391,6 +391,26 @@ static bool eth_cfg_show(void) {
 }
 
 // ===================================================================
+// Diag info — one-line reason for health status
+// ===================================================================
+static void eth_diag_info(void) {
+    if (!hal_net_detected()) {
+        s_cli_out->printf("  Reason:    ETH chip not detected (error %ld)\n", (long)ERR_NOT_DETECTED);
+    } else if (!hal_net_link_up()) {
+        s_cli_out->printf("  Reason:    link DOWN — no cable connected\n");
+    } else if (!hal_net_is_connected()) {
+        s_cli_out->printf("  Reason:    link up but no IP (error %ld)\n", (long)ERR_LINK_DOWN);
+    } else {
+        char buf[20];
+        formatU32Ip(hal_net_get_ip(), buf, sizeof(buf));
+        uint8_t speed = hal_net_link_speed();
+        bool duplex = hal_net_full_duplex();
+        s_cli_out->printf("  Reason:    link up, %u Mbps %s, IP %s\n",
+            (unsigned)speed, duplex ? "full-duplex" : "half-duplex", buf);
+    }
+}
+
+// ===================================================================
 // Debug — comprehensive ETH diagnostics
 // ===================================================================
 static bool eth_debug(void) {
@@ -504,6 +524,7 @@ const ModuleOps2 mod_eth_ops = {
     .cfg_load  = eth_cfg_load,
     .cfg_show  = eth_cfg_show,
 
+    .diag_info = eth_diag_info,
     .debug = eth_debug,
 
     .deps = s_deps,

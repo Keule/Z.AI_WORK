@@ -18,6 +18,10 @@
 
 #include <cstdio>
 
+#include "cli.h"
+
+extern Stream* s_cli_out;
+
 // ===================================================================
 // Freshness timeout
 // ===================================================================
@@ -158,11 +162,34 @@ static bool mod_was_cfg_show(void) {
 }
 
 // ===================================================================
+// Diagnostic info
+// ===================================================================
+
+static void mod_was_diag_info(void) {
+    uint32_t now = hal_millis();
+    uint32_t ago = (s_state.last_update_ms > 0) ? (now - s_state.last_update_ms) : 0;
+    if (!s_state.detected) {
+        s_cli_out->printf("  Reason:    ADS1118 not detected on SPI (error 1)\n");
+    } else if (s_state.error_code == 2) {
+        s_cli_out->printf("  Reason:    SPI read failed (error 2)\n");
+    } else if (s_state.error_code == 3) {
+        s_cli_out->printf("  Reason:    implausible angle %.2f deg (error 3)\n",
+            static_cast<double>(s_cached_angle_deg));
+    } else if (!s_state.quality_ok || ago > FRESHNESS_TIMEOUT_MS) {
+        s_cli_out->printf("  Reason:    no WAS data for %lu ms (timeout %lu ms)\n",
+            (unsigned long)ago, (unsigned long)FRESHNESS_TIMEOUT_MS);
+    } else {
+        s_cli_out->printf("  Reason:    OK — angle=%.2f deg, raw=%d\n",
+            static_cast<double>(s_cached_angle_deg), (int)s_cached_raw);
+    }
+}
+
+// ===================================================================
 // Debug
 // ===================================================================
 
 static bool mod_was_debug(void) {
-    LOGI("WAS", "debug: detected=%s quality_ok=%s error=%ld angle=%.2f raw=%d",
+    s_cli_out->printf("  WAS debug: detected=%s quality_ok=%s error=%ld angle=%.2f raw=%d\n",
          s_state.detected ? "yes" : "no",
          s_state.quality_ok ? "yes" : "no",
          static_cast<long>(s_state.error_code),
@@ -216,6 +243,7 @@ const ModuleOps2 mod_was_ops = {
     /* cfg_save    */ mod_was_cfg_save,
     /* cfg_load    */ mod_was_cfg_load,
     /* cfg_show    */ mod_was_cfg_show,
+    /* diag_info   */ mod_was_diag_info,
     /* debug       */ mod_was_debug,
     /* deps        */ s_deps
 };

@@ -22,6 +22,10 @@
 #include <cstdio>
 #include <cstring>
 
+#include "cli.h"
+
+extern Stream* s_cli_out;
+
 // ===================================================================
 // Error codes (module-specific)
 // ===================================================================
@@ -265,20 +269,35 @@ static bool mod_logging_cfg_show(void) {
 }
 
 // ===================================================================
+// Diag info
+// ===================================================================
+
+static void mod_logging_diag_info(void) {
+    if (!s_sd_detected) {
+        s_cli_out->printf("  Reason:    SD card not detected (error 1)\n");
+    } else if (s_state.error_code != 0) {
+        s_cli_out->printf("  Reason:    error code %lu\n", (unsigned long)s_state.error_code);
+    } else {
+        s_cli_out->printf("  Reason:    OK — SD active, flushed=%lu records\n",
+            (unsigned long)sdLoggerGetRecordsFlushed());
+    }
+}
+
+// ===================================================================
 // Debug
 // ===================================================================
 
 static bool mod_logging_debug(void) {
-    hal_log("LOGGING debug:");
-    hal_log("  detected       = %s", s_state.detected ? "yes" : "no");
-    hal_log("  quality_ok     = %s", s_state.quality_ok ? "yes" : "no");
-    hal_log("  error_code     = %lu", (unsigned long)s_state.error_code);
-    hal_log("  last_update    = %lu ms", (unsigned long)s_state.last_update_ms);
-    hal_log("  sd_detected    = %s", s_sd_detected ? "yes" : "no");
-    hal_log("  is_active      = %s", sdLoggerIsActive() ? "yes" : "no");
-    hal_log("  records_flushed= %lu", (unsigned long)sdLoggerGetRecordsFlushed());
-    hal_log("  buffer_count   = %lu", (unsigned long)sdLoggerGetBufferCount());
-    hal_log("  psram_buffer   = %s", sdLoggerPsramBufferActive() ? "yes" : "no");
+    s_cli_out->printf("LOGGING debug:\n");
+    s_cli_out->printf("  detected       = %s\n", s_state.detected ? "yes" : "no");
+    s_cli_out->printf("  quality_ok     = %s\n", s_state.quality_ok ? "yes" : "no");
+    s_cli_out->printf("  error_code     = %lu\n", (unsigned long)s_state.error_code);
+    s_cli_out->printf("  last_update    = %lu ms\n", (unsigned long)s_state.last_update_ms);
+    s_cli_out->printf("  sd_detected    = %s\n", s_sd_detected ? "yes" : "no");
+    s_cli_out->printf("  is_active      = %s\n", sdLoggerIsActive() ? "yes" : "no");
+    s_cli_out->printf("  records_flushed= %lu\n", (unsigned long)sdLoggerGetRecordsFlushed());
+    s_cli_out->printf("  buffer_count   = %lu\n", (unsigned long)sdLoggerGetBufferCount());
+    s_cli_out->printf("  psram_buffer   = %s\n", sdLoggerPsramBufferActive() ? "yes" : "no");
     return true;
 }
 
@@ -331,6 +350,7 @@ const ModuleOps2 mod_logging_ops = {
     .cfg_load    = mod_logging_cfg_load,
     .cfg_show    = mod_logging_cfg_show,
 
+    .diag_info   = mod_logging_diag_info,
     .debug       = mod_logging_debug,
 
     .deps        = nullptr,   // no module dependencies

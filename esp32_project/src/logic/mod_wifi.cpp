@@ -19,6 +19,10 @@
 #include <cstring>
 #include <cstdio>
 
+#include "cli.h"
+
+extern Stream* s_cli_out;
+
 #if defined(ARDUINO_ARCH_ESP32)
 #include <WiFi.h>
 #endif
@@ -300,10 +304,23 @@ static bool wifi_cfg_show(void) {
 }
 
 // ===================================================================
+// Diag info
+// ===================================================================
+static void wifi_diag_info(void) {
+    if (!s_state.detected) {
+        s_cli_out->printf("  Reason:    WiFi not initialized (error %ld)\n", (long)s_state.error_code);
+    } else if (!s_state.quality_ok) {
+        s_cli_out->printf("  Reason:    no client connected / not associated\n");
+    } else {
+        s_cli_out->printf("  Reason:    OK — mode=%s ssid=%s\n", s_cfg.mode, s_cfg.ssid);
+    }
+}
+
+// ===================================================================
 // Debug
 // ===================================================================
 static bool wifi_debug(void) {
-    LOGI(TAG, "=== WiFi Debug ===");
+    s_cli_out->printf("=== WiFi Debug ===\n");
     wifi_cfg_show();
     return true;
 }
@@ -341,6 +358,7 @@ const ModuleOps2 mod_wifi_ops = {
     .cfg_load  = wifi_cfg_load,
     .cfg_show  = wifi_cfg_show,
 
+    .diag_info = wifi_diag_info,
     .debug = wifi_debug,
 
     .deps = s_deps,

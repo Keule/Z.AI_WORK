@@ -19,6 +19,10 @@
 #include <cstdio>
 #include <cstring>
 
+#include "cli.h"
+
+extern Stream* s_cli_out;
+
 // ===================================================================
 // Freshness timeout (GNSS NMEA data should arrive at 10 Hz)
 // ===================================================================
@@ -224,11 +228,33 @@ static bool mod_gnss_cfg_show(void) {
 }
 
 // ===================================================================
+// Diagnostic info
+// ===================================================================
+
+static void mod_gnss_diag_info(void) {
+    uint32_t now = hal_millis();
+    uint32_t ago = (s_state.last_update_ms > 0) ? (now - s_state.last_update_ms) : 0;
+    if (!s_uart_a_ready && !s_uart_b_ready) {
+        s_cli_out->printf("  Reason:    UART init failed (A=%s B=%s)\n",
+            s_uart_a_ready ? "OK" : "FAIL", s_uart_b_ready ? "OK" : "FAIL");
+    } else if (s_state.error_code != 0) {
+        s_cli_out->printf("  Reason:    error code %ld\n", (long)s_state.error_code);
+    } else if (!s_state.quality_ok || ago > FRESHNESS_TIMEOUT_MS) {
+        s_cli_out->printf("  Reason:    no NMEA data for %lu ms (timeout %lu ms)\n",
+            (unsigned long)ago, (unsigned long)FRESHNESS_TIMEOUT_MS);
+    } else {
+        s_cli_out->printf("  Reason:    OK — UART-A=%s UART-B=%s, data %lu ms ago\n",
+            s_uart_a_ready ? "OK" : "DOWN", s_uart_b_ready ? "OK" : "DOWN",
+            (unsigned long)ago);
+    }
+}
+
+// ===================================================================
 // Debug
 // ===================================================================
 
 static bool mod_gnss_debug(void) {
-    LOGI("GNSS", "debug: uart_a=%s uart_b=%s baud_a=%lu baud_b=%lu",
+    s_cli_out->printf("  GNSS debug: uart_a=%s uart_b=%s baud_a=%lu baud_b=%lu\n",
          s_uart_a_ready ? "OK" : "DOWN",
          s_uart_b_ready ? "OK" : "DOWN",
          static_cast<unsigned long>(s_cfg_baud_a),
@@ -270,6 +296,7 @@ const ModuleOps2 mod_gnss_ops = {
     /* cfg_save    */ mod_gnss_cfg_save,
     /* cfg_load    */ mod_gnss_cfg_load,
     /* cfg_show    */ mod_gnss_cfg_show,
+    /* diag_info   */ mod_gnss_diag_info,
     /* debug       */ mod_gnss_debug,
     /* deps        */ s_deps
 };

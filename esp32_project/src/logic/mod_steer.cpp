@@ -22,6 +22,10 @@
 #include <cstdio>
 #include <cstring>
 
+#include "cli.h"
+
+extern Stream* s_cli_out;
+
 // ===================================================================
 // PID Controller — inlined from control.cpp
 // ===================================================================
@@ -483,28 +487,44 @@ static bool mod_steer_cfg_show(void) {
 // Debug
 // ===================================================================
 
+static void mod_steer_diag_info(void) {
+    if (!s_state.detected) {
+        s_cli_out->printf("  Reason:    module not activated\n");
+    } else if (s_state.error_code == 2) {
+        s_cli_out->printf("  Reason:    safety KICK — actuator disabled\n");
+    } else if (s_state.error_code == 3) {
+        s_cli_out->printf("  Reason:    watchdog triggered — no AgIO data\n");
+    } else if (!s_state.quality_ok) {
+        s_cli_out->printf("  Reason:    input stale — IMU/WAS data too old\n");
+    } else {
+        s_cli_out->printf("  Reason:    OK — PID running, cmd=%u, error=%.1f deg\n",
+            (unsigned)s_actuator_cmd,
+            static_cast<double>(s_snap.desired_angle_deg - s_snap.steer_angle_deg));
+    }
+}
+
 static bool mod_steer_debug(void) {
-    hal_log("STEER debug:");
-    hal_log("  detected      = %s", s_state.detected ? "yes" : "no");
-    hal_log("  quality_ok    = %s", s_state.quality_ok ? "yes" : "no");
-    hal_log("  error_code    = %lu", (unsigned long)s_state.error_code);
-    hal_log("  last_update   = %lu ms", (unsigned long)s_state.last_update_ms);
-    hal_log("  actuator_cmd  = %u", (unsigned)s_actuator_cmd);
-    hal_log("  heading       = %.2f deg", s_snap.heading_deg);
-    hal_log("  yaw_rate      = %.2f dps", s_snap.yaw_rate_dps);
-    hal_log("  roll          = %.2f deg", s_snap.roll_deg);
-    hal_log("  steer_angle   = %.2f deg", s_snap.steer_angle_deg);
-    hal_log("  steer_raw     = %d", (int)s_snap.steer_angle_raw);
-    hal_log("  desired_angle = %.2f deg", s_snap.desired_angle_deg);
-    hal_log("  safety        = %s", s_snap.safety_ok ? "OK" : "KICK");
-    hal_log("  watchdog      = %s", s_snap.watchdog_triggered ? "TRIG" : "OK");
-    hal_log("  speed         = %.1f km/h", s_snap.speed_kmh);
-    hal_log("  work/steer    = %s/%s",
+    s_cli_out->printf("STEER debug:\n");
+    s_cli_out->printf("  detected      = %s\n", s_state.detected ? "yes" : "no");
+    s_cli_out->printf("  quality_ok    = %s\n", s_state.quality_ok ? "yes" : "no");
+    s_cli_out->printf("  error_code    = %lu\n", (unsigned long)s_state.error_code);
+    s_cli_out->printf("  last_update   = %lu ms\n", (unsigned long)s_state.last_update_ms);
+    s_cli_out->printf("  actuator_cmd  = %u\n", (unsigned)s_actuator_cmd);
+    s_cli_out->printf("  heading       = %.2f deg\n", s_snap.heading_deg);
+    s_cli_out->printf("  yaw_rate      = %.2f dps\n", s_snap.yaw_rate_dps);
+    s_cli_out->printf("  roll          = %.2f deg\n", s_snap.roll_deg);
+    s_cli_out->printf("  steer_angle   = %.2f deg\n", s_snap.steer_angle_deg);
+    s_cli_out->printf("  steer_raw     = %d\n", (int)s_snap.steer_angle_raw);
+    s_cli_out->printf("  desired_angle = %.2f deg\n", s_snap.desired_angle_deg);
+    s_cli_out->printf("  safety        = %s\n", s_snap.safety_ok ? "OK" : "KICK");
+    s_cli_out->printf("  watchdog      = %s\n", s_snap.watchdog_triggered ? "TRIG" : "OK");
+    s_cli_out->printf("  speed         = %.1f km/h\n", s_snap.speed_kmh);
+    s_cli_out->printf("  work/steer    = %s/%s\n",
             s_snap.work_switch ? "ON" : "off",
             s_snap.steer_switch ? "ON" : "off");
-    hal_log("  pid_integral   = %.6f", s_pid.integral);
-    hal_log("  pid_prev_error = %.4f", s_pid.prev_error);
-    hal_log("  manual_mode    = %s", s_manual_actuator_mode ? "yes" : "no");
+    s_cli_out->printf("  pid_integral   = %.6f\n", s_pid.integral);
+    s_cli_out->printf("  pid_prev_error = %.4f\n", s_pid.prev_error);
+    s_cli_out->printf("  manual_mode    = %s\n", s_manual_actuator_mode ? "yes" : "no");
     return true;
 }
 
@@ -647,6 +667,7 @@ const ModuleOps2 mod_steer_ops = {
     .cfg_load    = mod_steer_cfg_load,
     .cfg_show    = mod_steer_cfg_show,
 
+    .diag_info   = mod_steer_diag_info,
     .debug       = mod_steer_debug,
 
     .deps        = s_deps,

@@ -40,6 +40,10 @@ extern "C" bool opModeIsPausedStatusBit(void);
 #include <cstdio>
 #include <cstring>
 
+#include "cli.h"
+
+extern Stream* s_cli_out;
+
 static const char* const TAG = "MOD_NETWORK";
 
 // ===================================================================
@@ -780,8 +784,26 @@ static bool network_cfg_show(void) {
 // ===================================================================
 // Debug
 // ===================================================================
+static void network_diag_info(void) {
+    bool eth_active = moduleSysIsActive(ModuleId::ETH);
+    bool eth_healthy = eth_active && moduleSysIsHealthy(ModuleId::ETH, hal_millis());
+    bool wifi_active = moduleSysIsActive(ModuleId::WIFI);
+    bool wifi_healthy = wifi_active && moduleSysIsHealthy(ModuleId::WIFI, hal_millis());
+
+    if (!eth_active && !wifi_active) {
+        s_cli_out->printf("  Reason:    no transport active (ETH=OFF WIFI=OFF)\n");
+    } else if (!eth_healthy && !wifi_healthy) {
+        s_cli_out->printf("  Reason:    all transports unhealthy (ETH=%s WIFI=%s)\n",
+            eth_active ? "UNHEALTHY" : "OFF",
+            wifi_active ? "UNHEALTHY" : "OFF");
+    } else {
+        const char* transport = eth_healthy ? "ETH" : "WIFI";
+        s_cli_out->printf("  Reason:    OK — transport via %s, PGN RX/TX active\n", transport);
+    }
+}
+
 static bool network_debug(void) {
-    LOGI(TAG, "=== NETWORK Debug ===");
+    s_cli_out->printf("=== NETWORK Debug ===\n");
     network_cfg_show();
     return true;
 }
@@ -810,6 +832,7 @@ const ModuleOps2 mod_network_ops = {
     .cfg_load  = network_cfg_load,
     .cfg_show  = network_cfg_show,
 
+    .diag_info = network_diag_info,
     .debug = network_debug,
 
     .deps = s_deps,

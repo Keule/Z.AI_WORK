@@ -102,8 +102,9 @@ struct ModuleOps2 {
     bool           (*cfg_load)(void);
     bool           (*cfg_show)(void);
 
-    // --- Debug ---
-    bool           (*debug)(void);                 ///< Full lifecycle test
+    // --- Diagnostics ---
+    void           (*diag_info)(void);             ///< One-line health reason (via s_cli_out)
+    bool           (*debug)(void);                 ///< Full verbose diagnostic report
 
     // --- Dependencies ---
     const ModuleId* deps;           ///< Nullptr-terminated array of required modules

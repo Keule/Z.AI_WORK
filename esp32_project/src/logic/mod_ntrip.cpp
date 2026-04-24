@@ -15,6 +15,7 @@
 #include "global_state.h"
 #include "hal/hal.h"
 #include "dependency_policy.h"
+#include "cli.h"
 
 #include "log_config.h"
 #define LOG_LOCAL_LEVEL LOG_LEVEL_NTRIP
@@ -23,6 +24,8 @@
 
 #include <cstdio>
 #include <cstring>
+
+extern Stream* s_cli_out;
 
 // ===================================================================
 // Freshness timeout
@@ -305,8 +308,53 @@ static bool mod_ntrip_cfg_show(void) {
 }
 
 // ===================================================================
-// Debug
+// Diagnostics
 // ===================================================================
+
+static void mod_ntrip_diag_info(void) {
+    NtripState snap;
+    {
+        StateLock lock;
+        snap = g_ntrip;
+    }
+
+    const char* state_str = "UNKNOWN";
+    switch (snap.conn_state) {
+    case NtripConnState::IDLE:           state_str = "IDLE"; break;
+    case NtripConnState::CONNECTING:     state_str = "CONNECTING"; break;
+    case NtripConnState::AUTHENTICATING: state_str = "AUTHENTICATING"; break;
+    case NtripConnState::CONNECTED:      state_str = "CONNECTED"; break;
+    case NtripConnState::ERROR:          state_str = "ERROR"; break;
+    case NtripConnState::DISCONNECTED:   state_str = "DISCONNECTED"; break;
+    }
+
+    const uint32_t now = hal_millis();
+
+    if (snap.conn_state == NtripConnState::CONNECTED) {
+        if (snap.last_rtcm_ms > 0 && (now - snap.last_rtcm_ms) > FRESHNESS_TIMEOUT_MS) {
+            s_cli_out->printf("  Reason:    RTCM data stale (%lu ms ago, timeout %lu ms)\n",
+                (unsigned long)(now - snap.last_rtcm_ms),
+                (unsigned long)FRESHNESS_TIMEOUT_MS);
+        } else if (snap.last_rtcm_ms == 0) {
+            s_cli_out->printf("  Reason:    connected, but no RTCM data received yet\n");
+        } else {
+            s_cli_out->printf("  Reason:    connected, RTCM flowing (%lu ms ago)\n",
+                (unsigned long)(now - snap.last_rtcm_ms));
+        }
+    } else if (snap.conn_state == NtripConnState::ERROR) {
+        s_cli_out->printf("  Reason:    %s — HTTP %u, err=\"%s\"\n",
+            state_str,
+            static_cast<unsigned>(snap.last_http_status),
+            snap.last_error[0] ? snap.last_error : "(none)");
+    } else {
+        s_cli_out->printf("  Reason:    %s — not connected\n", state_str);
+    }
+    s_cli_out->printf("  Status:    state=%s rx=%lu fwd=%lu fails=%u\n",
+        state_str,
+        static_cast<unsigned long>(snap.rx_bytes),
+        static_cast<unsigned long>(snap.forwarded_bytes),
+        static_cast<unsigned>(snap.connect_failures));
+}
 
 static bool mod_ntrip_debug(void) {
     NtripState snap;
@@ -315,12 +363,29 @@ static bool mod_ntrip_debug(void) {
         snap = g_ntrip;
     }
 
-    LOGI("NTRIP", "debug: state=%d rx=%lu fwd=%lu http=%u err=\"%s\"",
-         static_cast<int>(snap.conn_state),
-         static_cast<unsigned long>(snap.rx_bytes),
-         static_cast<unsigned long>(snap.forwarded_bytes),
-         static_cast<unsigned>(snap.last_http_status),
-         snap.last_error[0] ? snap.last_error : "(none)");
+    const char* state_str = "UNKNOWN";
+    switch (snap.conn_state) {
+    case NtripConnState::IDLE:           state_str = "IDLE"; break;
+    case NtripConnState::CONNECTING:     state_str = "CONNECTING"; break;
+    case NtripConnState::AUTHENTICATING: state_str = "AUTHENTICATING"; break;
+    case NtripConnState::CONNECTED:      state_str = "CONNECTED"; break;
+    case NtripConnState::ERROR:          state_str = "ERROR"; break;
+    case NtripConnState::DISCONNECTED:   state_str = "DISCONNECTED"; break;
+    }
+
+    const uint32_t now = hal_millis();
+    s_cli_out->printf("  State:          %s\n", state_str);
+    s_cli_out->printf("  Connected:      %s\n", snap.conn_state == NtripConnState::CONNECTED ? "YES" : "NO");
+    s_cli_out->printf("  HTTP status:    %u\n", static_cast<unsigned>(snap.last_http_status));
+    s_cli_out->printf("  Last error:     %s\n", snap.last_error[0] ? snap.last_error : "(none)");
+    s_cli_out->printf("  RTCM rx:        %lu bytes total\n", static_cast<unsigned long>(snap.rx_bytes));
+    s_cli_out->printf("  RTCM forwarded: %lu bytes total\n", static_cast<unsigned long>(snap.forwarded_bytes));
+    s_cli_out->printf("  Last RTCM:      %lu ms ago\n", snap.last_rtcm_ms > 0 ? (unsigned long)(now - snap.last_rtcm_ms) : 0UL);
+    s_cli_out->printf("  Connect fails:  %u\n", static_cast<unsigned>(snap.connect_failures));
+    s_cli_out->printf("  State timeout:  %lu ms\n", (unsigned long)FRESHNESS_TIMEOUT_MS);
+    s_cli_out->printf("  Host:           %s:%u\n", g_ntrip_config.host, static_cast<unsigned>(g_ntrip_config.port));
+    s_cli_out->printf("  Mountpoint:     %s\n", g_ntrip_config.mountpoint);
+    s_cli_out->printf("  User:           %s\n", g_ntrip_config.user);
     return (snap.conn_state == NtripConnState::CONNECTED);
 }
 
@@ -360,6 +425,7 @@ const ModuleOps2 mod_ntrip_ops = {
     /* cfg_save    */ mod_ntrip_cfg_save,
     /* cfg_load    */ mod_ntrip_cfg_load,
     /* cfg_show    */ mod_ntrip_cfg_show,
+    /* diag_info   */ mod_ntrip_diag_info,
     /* debug       */ mod_ntrip_debug,
     /* deps        */ s_deps
 };
