@@ -170,6 +170,7 @@ const ModuleOps2 mod_actuator_ops = {
     /* input       */ mod_actuator_input,
     /* process     */ mod_actuator_process,
     /* output      */ mod_actuator_output,
+    /* cfg_keys   */ nullptr,
     /* cfg_get     */ mod_actuator_cfg_get,
     /* cfg_set     */ mod_actuator_cfg_set,
     /* cfg_apply   */ mod_actuator_cfg_apply,

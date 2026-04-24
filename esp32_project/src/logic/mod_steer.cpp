@@ -609,6 +609,20 @@ bool mod_steer_manual_actuator_mode(void) {
 }
 
 // ===================================================================
+// Config key definitions
+// ===================================================================
+static const CfgKeyDef s_steer_keys[] = {
+    {"kp",         "Proportional gain"},
+    {"ki",         "Integral gain"},
+    {"kd",         "Derivative gain"},
+    {"output_min", "Minimum PID output"},
+    {"output_max", "Maximum PID output"},
+    {nullptr, nullptr}  // sentinel
+};
+
+static const CfgKeyDef* mod_steer_cfg_keys(void) { return s_steer_keys; }
+
+// ===================================================================
 // Ops table — const, ModuleOps2 (15 function pointers)
 // ===================================================================
 
@@ -625,6 +639,7 @@ const ModuleOps2 mod_steer_ops = {
     .process     = mod_steer_process,
     .output      = mod_steer_output,
 
+    .cfg_keys    = mod_steer_cfg_keys,
     .cfg_get     = mod_steer_cfg_get,
     .cfg_set     = mod_steer_cfg_set,
     .cfg_apply   = mod_steer_cfg_apply,

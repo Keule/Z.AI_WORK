@@ -96,9 +96,25 @@ static void cliModuleShow(const char* name) {
         s_cli_out->println("  Deps:      none");
     }
 
-    // Show config
+    // Config keys — show all settable key/value pairs
+    if (ops->cfg_keys && ops->cfg_get) {
+        const CfgKeyDef* keys = ops->cfg_keys();
+        if (keys && keys->key) {
+            s_cli_out->println("  Config:");
+            for (int i = 0; keys[i].key; i++) {
+                char val_buf[48] = "---";
+                ops->cfg_get(keys[i].key, val_buf, sizeof(val_buf));
+                s_cli_out->printf("    %-14s = %s", keys[i].key, val_buf);
+                if (keys[i].help) {
+                    s_cli_out->printf("  (%s)", keys[i].help);
+                }
+                s_cli_out->println();
+            }
+        }
+    }
+
+    // Extended show (module-specific output)
     if (ops->cfg_show) {
-        s_cli_out->println("  Config:");
         ops->cfg_show();
     }
 }

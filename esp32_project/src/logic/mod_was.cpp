@@ -209,6 +209,7 @@ const ModuleOps2 mod_was_ops = {
     /* input       */ mod_was_input,
     /* process     */ mod_was_process,
     /* output      */ mod_was_output,
+    /* cfg_keys   */ nullptr,
     /* cfg_get     */ mod_was_cfg_get,
     /* cfg_set     */ mod_was_cfg_set,
     /* cfg_apply   */ mod_was_cfg_apply,

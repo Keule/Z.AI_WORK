@@ -327,6 +327,20 @@ static bool eth_debug(void) {
 }
 
 // ===================================================================
+// Config key definitions
+// ===================================================================
+static const CfgKeyDef s_eth_keys[] = {
+    {"mode",    "\"dhcp\" or \"static\""},
+    {"ip",      "Static IPv4 (e.g. 192.168.1.70)"},
+    {"gateway", "Static gateway (e.g. 192.168.1.1)"},
+    {"subnet",  "Subnet mask (e.g. 255.255.255.0)"},
+    {"dns",     "DNS server (e.g. 8.8.8.8)"},
+    {nullptr, nullptr}  // sentinel
+};
+
+static const CfgKeyDef* eth_cfg_keys(void) { return s_eth_keys; }
+
+// ===================================================================
 // Ops table
 // ===================================================================
 const ModuleOps2 mod_eth_ops = {
@@ -342,6 +356,7 @@ const ModuleOps2 mod_eth_ops = {
     .process = eth_process,
     .output  = eth_output,
 
+    .cfg_keys   = eth_cfg_keys,
     .cfg_get   = eth_cfg_get,
     .cfg_set   = eth_cfg_set,
     .cfg_apply = eth_cfg_apply,

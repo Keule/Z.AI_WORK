@@ -295,6 +295,18 @@ uint32_t mod_logging_records_flushed(void) {
 }
 
 // ===================================================================
+// Config key definitions
+// ===================================================================
+static const CfgKeyDef s_logging_keys[] = {
+    {"interval_ms",    "Logging subsample interval (ms)"},
+    {"default_active", "Logging active by default (true/false)"},
+    {"gpio_pin",       "GPIO pin for hardware switch"},
+    {nullptr, nullptr}  // sentinel
+};
+
+static const CfgKeyDef* mod_logging_cfg_keys(void) { return s_logging_keys; }
+
+// ===================================================================
 // Ops table — const, ModuleOps2 (15 function pointers)
 // ===================================================================
 
@@ -311,6 +323,7 @@ const ModuleOps2 mod_logging_ops = {
     .process     = mod_logging_process,
     .output      = mod_logging_output,
 
+    .cfg_keys    = mod_logging_cfg_keys,
     .cfg_get     = mod_logging_cfg_get,
     .cfg_set     = mod_logging_cfg_set,
     .cfg_apply   = mod_logging_cfg_apply,

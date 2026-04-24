@@ -802,6 +802,7 @@ const ModuleOps2 mod_network_ops = {
     .process = network_process,
     .output  = network_output,
 
+    .cfg_keys   = nullptr,
     .cfg_get   = network_cfg_get,
     .cfg_set   = network_cfg_set,
     .cfg_apply = network_cfg_apply,

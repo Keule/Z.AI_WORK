@@ -169,6 +169,7 @@ const ModuleOps2 mod_safety_ops = {
     /* input       */ mod_safety_input,
     /* process     */ mod_safety_process,
     /* output      */ mod_safety_output,
+    /* cfg_keys   */ nullptr,
     /* cfg_get     */ mod_safety_cfg_get,
     /* cfg_set     */ mod_safety_cfg_set,
     /* cfg_apply   */ mod_safety_cfg_apply,

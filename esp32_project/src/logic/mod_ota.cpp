@@ -208,6 +208,16 @@ static bool mod_ota_debug(void) {
 }
 
 // ===================================================================
+// Config key definitions
+// ===================================================================
+static const CfgKeyDef s_ota_keys[] = {
+    {"auto_check", "Auto-check for firmware updates (true/false)"},
+    {nullptr, nullptr}  // sentinel
+};
+
+static const CfgKeyDef* mod_ota_cfg_keys(void) { return s_ota_keys; }
+
+// ===================================================================
 // Ops table — const, ModuleOps2 (15 function pointers)
 // ===================================================================
 
@@ -224,6 +234,7 @@ const ModuleOps2 mod_ota_ops = {
     .process     = mod_ota_process,
     .output      = mod_ota_output,
 
+    .cfg_keys    = mod_ota_cfg_keys,
     .cfg_get     = mod_ota_cfg_get,
     .cfg_set     = mod_ota_cfg_set,
     .cfg_apply   = mod_ota_cfg_apply,

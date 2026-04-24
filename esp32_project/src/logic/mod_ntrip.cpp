@@ -325,6 +325,21 @@ static bool mod_ntrip_debug(void) {
 }
 
 // ===================================================================
+// Config key definitions
+// ===================================================================
+static const CfgKeyDef s_ntrip_keys[] = {
+    {"host",        "NTRIP caster hostname"},
+    {"port",        "NTRIP caster port"},
+    {"mountpoint",  "NTRIP mountpoint"},
+    {"user",        "NTRIP username"},
+    {"password",    "NTRIP password"},
+    {"reconnect_ms", "Reconnect delay (ms)"},
+    {nullptr, nullptr}  // sentinel
+};
+
+static const CfgKeyDef* mod_ntrip_cfg_keys(void) { return s_ntrip_keys; }
+
+// ===================================================================
 // Ops table
 // ===================================================================
 
@@ -338,6 +353,7 @@ const ModuleOps2 mod_ntrip_ops = {
     /* input       */ mod_ntrip_input,
     /* process     */ mod_ntrip_process,
     /* output      */ mod_ntrip_output,
+    /* cfg_keys   */ mod_ntrip_cfg_keys,
     /* cfg_get     */ mod_ntrip_cfg_get,
     /* cfg_set     */ mod_ntrip_cfg_set,
     /* cfg_apply   */ mod_ntrip_cfg_apply,

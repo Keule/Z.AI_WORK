@@ -264,6 +264,13 @@ static bool bt_debug(void) {
 }
 
 // ===================================================================
+static const CfgKeyDef s_bt_keys[] = {
+    {"name",     "Bluetooth device name"},
+    {nullptr, nullptr}
+};
+
+static const CfgKeyDef* bt_cfg_keys(void) { return s_bt_keys; }
+
 // Ops table
 // ===================================================================
 const ModuleOps2 mod_bt_ops = {
@@ -279,6 +286,7 @@ const ModuleOps2 mod_bt_ops = {
     .process = bt_process,
     .output  = bt_output,
 
+    .cfg_keys   = bt_cfg_keys,
     .cfg_get   = bt_cfg_get,
     .cfg_set   = bt_cfg_set,
     .cfg_apply = bt_cfg_apply,

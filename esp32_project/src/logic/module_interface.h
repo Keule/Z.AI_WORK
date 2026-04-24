@@ -68,7 +68,15 @@ struct ModState {
 };
 
 // ===================================================================
-// ModuleOps2 — unified module interface (15 function pointers)
+// CfgKeyDef — descriptor for one configurable key (ADR-MODULE-002)
+// ===================================================================
+struct CfgKeyDef {
+    const char* key;       ///< Key name for module set/get (e.g. "ip", "mode")
+    const char* help;      ///< Short description (e.g. "Static IPv4 address")
+};
+
+// ===================================================================
+// ModuleOps2 — unified module interface (16 function pointers)
 // ===================================================================
 struct ModuleOps2 {
     const char*    name;                           ///< Human-readable name
@@ -86,6 +94,7 @@ struct ModuleOps2 {
     ModuleResult   (*output)(uint32_t now_ms);     ///< Write actuators / send data
 
     // --- Configuration ---
+    const CfgKeyDef* (*cfg_keys)(void);            ///< Return array of keys (nullptr-term, may be nullptr)
     bool           (*cfg_get)(const char* key, char* buf, size_t len);
     bool           (*cfg_set)(const char* key, const char* val);
     bool           (*cfg_apply)(void);

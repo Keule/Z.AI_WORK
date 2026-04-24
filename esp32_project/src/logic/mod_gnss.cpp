@@ -237,6 +237,19 @@ static bool mod_gnss_debug(void) {
 }
 
 // ===================================================================
+// Config key definitions
+// ===================================================================
+static const CfgKeyDef s_gnss_keys[] = {
+    {"baud_a", "UART-A baud rate"},
+    {"baud_b", "UART-B baud rate"},
+    {"role_a", "UART-A role (0=primary, 1=RTCM)"},
+    {"role_b", "UART-B role (0=primary, 1=RTCM)"},
+    {nullptr, nullptr}  // sentinel
+};
+
+static const CfgKeyDef* mod_gnss_cfg_keys(void) { return s_gnss_keys; }
+
+// ===================================================================
 // Ops table
 // ===================================================================
 
@@ -250,6 +263,7 @@ const ModuleOps2 mod_gnss_ops = {
     /* input       */ mod_gnss_input,
     /* process     */ mod_gnss_process,
     /* output      */ mod_gnss_output,
+    /* cfg_keys   */ mod_gnss_cfg_keys,
     /* cfg_get     */ mod_gnss_cfg_get,
     /* cfg_set     */ mod_gnss_cfg_set,
     /* cfg_apply   */ mod_gnss_cfg_apply,

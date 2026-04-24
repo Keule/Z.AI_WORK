@@ -309,6 +309,15 @@ static bool wifi_debug(void) {
 }
 
 // ===================================================================
+static const CfgKeyDef s_wifi_keys[] = {
+    {"ssid",     "WiFi SSID"},
+    {"password", "WiFi password"},
+    {"mode",     "\"ap\" or \"sta\""},
+    {nullptr, nullptr}
+};
+
+static const CfgKeyDef* wifi_cfg_keys(void) { return s_wifi_keys; }
+
 // Ops table
 // ===================================================================
 const ModuleOps2 mod_wifi_ops = {
@@ -324,6 +333,7 @@ const ModuleOps2 mod_wifi_ops = {
     .process = wifi_process,
     .output  = wifi_output,
 
+    .cfg_keys   = wifi_cfg_keys,
     .cfg_get   = wifi_cfg_get,
     .cfg_set   = wifi_cfg_set,
     .cfg_apply = wifi_cfg_apply,

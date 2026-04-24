@@ -202,6 +202,7 @@ const ModuleOps2 mod_imu_ops = {
     /* input       */ mod_imu_input,
     /* process     */ mod_imu_process,
     /* output      */ mod_imu_output,
+    /* cfg_keys   */ nullptr,
     /* cfg_get     */ mod_imu_cfg_get,
     /* cfg_set     */ mod_imu_cfg_set,
     /* cfg_apply   */ mod_imu_cfg_apply,
