@@ -316,19 +316,36 @@ bool hal_net_is_connected(void);
 /// Check if W5500 chip was detected during init.
 bool hal_net_detected(void);
 
-/// Set static network parameters used for next restart.
+/// Set static network parameters (used by apply_config / next init).
 void hal_net_set_static_config(uint32_t ip, uint32_t gw, uint32_t subnet);
 
+/// Switch to DHCP mode (clears static IP config).
+void hal_net_set_dhcp(void);
+
+/// Re-apply IP config without restarting ETH driver.
+/// Static: calls ETH.config() + re-opens UDP sockets.
+/// DHCP: logs that reboot is required.
+void hal_net_apply_config(void);
+
 /// Restart Ethernet stack (blocking).
+/// NOTE: Crashes on RTL8201 — prefer hal_net_apply_config().
 bool hal_net_restart(void);
 
 /// Current IPv4 values (big-endian u32: a.b.c.d => 0xAABBCCDD).
 uint32_t hal_net_get_ip(void);
 uint32_t hal_net_get_gateway(void);
 uint32_t hal_net_get_subnet(void);
+uint32_t hal_net_get_dns(void);
 
 /// Ethernet link state (PHY/link only).
 bool hal_net_link_up(void);
+
+/// Ethernet MAC address (6 bytes into caller-provided buffer).
+void hal_net_get_mac(uint8_t* mac_out);
+
+/// Ethernet link speed (Mbps) and duplex mode.
+uint8_t hal_net_link_speed(void);  // 0 = unknown/down
+bool hal_net_full_duplex(void);
 
 // ===================================================================
 // Pin Claim Arbitration — TASK-027

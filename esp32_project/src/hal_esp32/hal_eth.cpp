@@ -29,6 +29,7 @@
 #include "esp_log.h"
 
 #include <Arduino.h>
+#include <cstring>
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include "esp_wifi.h"
@@ -175,8 +176,14 @@ void hal_net_init(void) {
     s_w5500_detected = true;
     hal_log("ETH: chip detected OK");
 
-    if (!ETH.config(s_local_ip, s_gateway, s_subnet, s_dns, s_dns)) {
-        hal_log("ETH: static IP config failed (may be using DHCP)");
+    // Apply IP config: static or DHCP
+    if (s_local_ip != IPAddress(0, 0, 0, 0)) {
+        if (!ETH.config(s_local_ip, s_gateway, s_subnet, s_dns, s_dns)) {
+            hal_log("ETH: static IP config failed");
+        }
+        hal_log("ETH: static mode %s", s_local_ip.toString().c_str());
+    } else {
+        hal_log("ETH: DHCP mode");
     }
 
     uint32_t wait_start = millis();
@@ -254,15 +261,44 @@ void hal_net_set_static_config(uint32_t ip, uint32_t gw, uint32_t subnet) {
     s_subnet = u32ToIp(subnet);
 }
 
-bool hal_net_restart(void) {
+void hal_net_set_dhcp(void) {
+    s_local_ip = IPAddress(0, 0, 0, 0);
+    s_gateway = IPAddress(0, 0, 0, 0);
+    s_subnet  = IPAddress(0, 0, 0, 0);
+}
+
+void hal_net_apply_config(void) {
+    // Stop UDP sockets
     ethUDP_recv.stop();
     ethUDP_send.stop();
     ethUDP_rtcm.stop();
-    ETH.end();
     s_eth_has_ip = false;
-    s_eth_link_up = false;
-    hal_net_init();
-    return s_eth_link_up || s_eth_has_ip;
+
+    if (s_local_ip != IPAddress(0, 0, 0, 0)) {
+        // Static IP mode — ETH.config() changes IP immediately
+        if (!ETH.config(s_local_ip, s_gateway, s_subnet, s_dns, s_dns)) {
+            hal_log("ETH: reconfig failed");
+            return;
+        }
+        hal_log("ETH: reconfigured static IP to %s", s_local_ip.toString().c_str());
+        s_eth_has_ip = true;
+
+        // Re-open UDP sockets
+        ethUDP_recv.begin(aog_port::AGIO_LISTEN);
+        ethUDP_rtcm.begin(aog_port::RTCM_LISTEN);
+        ethUDP_send.begin(aog_port::STEER);
+        hal_log("ETH: UDP sockets re-opened");
+    } else {
+        // DHCP mode — ETH.end()/begin() is NOT reliable on RTL8201
+        hal_log("ETH: DHCP mode — reboot required to take effect");
+    }
+}
+
+bool hal_net_restart(void) {
+    // NOTE: ETH.end()/begin() crashes on RTL8201 (LoadProhibited).
+    // Use hal_net_apply_config() for runtime IP changes.
+    hal_log("ETH: full restart not supported — use apply_config");
+    return hal_net_is_connected();
 }
 
 uint32_t hal_net_get_ip(void) {
@@ -288,4 +324,28 @@ uint32_t hal_net_get_subnet(void) {
 
 bool hal_net_link_up(void) {
     return s_eth_link_up;
+}
+
+uint32_t hal_net_get_dns(void) {
+    return ipToU32(s_dns);
+}
+
+void hal_net_get_mac(uint8_t* mac_out) {
+    if (!mac_out) return;
+    if (s_eth_has_ip) {
+        ETH.macAddress(mac_out);
+    } else {
+        // Return zeros if not connected
+        std::memset(mac_out, 0, 6);
+    }
+}
+
+uint8_t hal_net_link_speed(void) {
+    if (!s_eth_link_up) return 0;
+    return static_cast<uint8_t>(ETH.linkSpeed());
+}
+
+bool hal_net_full_duplex(void) {
+    if (!s_eth_link_up) return false;
+    return ETH.fullDuplex();
 }
