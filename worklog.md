@@ -106,3 +106,27 @@ Stage Summary:
 - `module debug SPI_SHARED` shows full telemetry (utilization, switches, deadlines)
 - Diagnostic boot paths (imu_bringup, gnss_buildup) still work via direct HAL calls
 - Boot: IMU activates first → DIRECT mode → WAS activates → SHARED mode → ACTUATOR activates
+
+---
+Task ID: 5
+Agent: Main
+Task: Gesamtkonzept 2-Task-Architecture (task_fast + task_slow)
+
+Work Log:
+- Read all relevant ADRs: ADR-007 (two-task), ADR-002 (old 3-task), ADR-005 (old mode system), ADR-STATE-001 (StateLock), ADR-MODULE-002 (module system)
+- Read current source files: main.cpp, module_system.cpp, shared_state.h, module_interface.h, op_mode.h/cpp, global_state.h, state_structs.h
+- Analyzed current state: main.cpp ALREADY implements task_fast/task_slow (ADR-007 partially done)
+- Identified key remaining issue: two competing OpMode systems (op_mode.h vs module_interface.h)
+- Wrote comprehensive Gesamtkonzept document (docs/GESAMTKONZEPT-two-task-architecture.md)
+
+Stage Summary:
+- Created: esp32_project/docs/GESAMTKONZEPT-two-task-architecture.md (14 sections)
+- Key finding: Architecture is ALREADY mostly implemented in main.cpp (task_fast/task_slow)
+- Critical cleanup needed: op_mode.h/cpp removal (superseded by module_interface.h CONFIG/WORK)
+- 4-phase implementation plan proposed:
+  - Phase 1: op_mode.h/cpp cleanup (P0)
+  - Phase 2: Sub-task lifecycle cleanup (P1)
+  - Phase 3: SharedSlot integration for NTRIP (P1)
+  - Phase 4: Follow-ups — GPIO toggle, NVS persistence (P2)
+- 5 open questions documented for discussion
+- NEXT: User reviews Gesamtkonzept, then Phase 1 implementation
