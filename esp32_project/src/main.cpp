@@ -605,11 +605,7 @@ static void bootInitCommunication(void) {
 // Boot Phase 5: Operating Mode Decision (ADR-MODULE-002)
 //
 // Liest Safety-Pin und entscheidet: CONFIG oder WORK mode.
-// Uses the new OpMode enum (CONFIG/WORK) from module_interface.h.
-//
-// NOTE: The old op_mode.h (BOOTING/ACTIVE/PAUSED) is NOT included
-//       to avoid OpMode name conflict with module_interface.h.
-//       GPIO mode toggle via safety pin is deferred to a future update.
+// Uses the OpMode enum (CONFIG/WORK) from module_interface.h (ADR-007).
 // ===================================================================
 static void bootEnterMode(void) {
     uint32_t t_phase = hal_millis();

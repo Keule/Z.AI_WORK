@@ -10,7 +10,7 @@
  */
 
 #include "config_framework.h"
-#include "op_mode.h"
+#include "module_interface.h"
 #include "nvs_config.h"
 #include "runtime_config.h"
 #include "hal/hal.h"
@@ -99,7 +99,7 @@ size_t configFrameworkCategoryCount(void) {
 }
 
 bool configFrameworkIsEditable(void) {
-    return opModeIsPaused();
+    return modeGet() == OpMode::CONFIG;
 }
 
 bool configFrameworkValidateAll(void) {
@@ -256,7 +256,7 @@ void configFrameworkPrintStatus(ConfigStream output) {
                 (int)s_category_count, CONFIG_MAX_CATEGORIES);
 
     const char* mode = configFrameworkIsEditable() ? "EDITABLE" : "READ-ONLY";
-    out->printf("  Modus: %s (%s)\n", mode, opModeToString(opModeGet()));
+    out->printf("  Modus: %s (%s)\n", mode, modeToString(modeGet()));
 
     for (size_t i = 0; i < s_category_count; i++) {
         const ConfigCategoryOps* ops = s_categories[i];

@@ -6,7 +6,7 @@
  */
 
 #include "cli.h"
-#include "op_mode.h"
+#include "module_interface.h"
 #include "setup_wizard.h"
 
 #include <Arduino.h>
@@ -69,26 +69,26 @@ void cliCmdRestart(int, char**) {
 
 void cliCmdMode(int argc, char** argv) {
     if (argc < 2) {
-        s_cli_out->printf("Mode: %s\n", opModeToString(opModeGet()));
+        s_cli_out->printf("Mode: %s\n", modeToString(modeGet()));
         return;
     }
 
-    if (strcmp(argv[1], "active") == 0) {
-        const bool ok = opModeRequest(OP_MODE_ACTIVE);
-        s_cli_out->printf("Mode -> ACTIVE: %s\n", ok ? "OK" : "ABGELEHNT");
-        return;
-    }
-
-    if (strcmp(argv[1], "paused") == 0) {
-        const bool ok = opModeRequest(OP_MODE_PAUSED);
-        s_cli_out->printf("Mode -> PAUSED: %s\n", ok ? "OK" : "ABGELEHNT");
+    if (strcmp(argv[1], "work") == 0) {
+        const bool ok = modeSet(OpMode::WORK);
+        s_cli_out->printf("Mode -> WORK: %s\n", ok ? "OK" : "ABGELEHNT");
         if (!ok) {
-            s_cli_out->println("Hinweis: PAUSED erfordert safety LOW + speed < 0.1 km/h");
+            s_cli_out->println("Hinweis: WORK erfordert Pipeline bereit (IMU+WAS+ACT+SAFETY+STEER)");
         }
         return;
     }
 
-    s_cli_out->println("usage: mode [active|paused]");
+    if (strcmp(argv[1], "config") == 0) {
+        const bool ok = modeSet(OpMode::CONFIG);
+        s_cli_out->printf("Mode -> CONFIG: %s\n", ok ? "OK" : "ABGELEHNT");
+        return;
+    }
+
+    s_cli_out->println("usage: mode [work|config]");
 }
 
 void cliCmdSetup(int argc, char** argv) {
@@ -107,6 +107,6 @@ void cmd_system_register(void) {
     (void)cliRegisterCommand("free",    &cliCmdFree,     "Show heap/PSRAM memory");
     (void)cliRegisterCommand("tasks",   &cliCmdTasks,    "Show FreeRTOS task list");
     (void)cliRegisterCommand("restart", &cliCmdRestart,  "Restart ESP32");
-    (void)cliRegisterCommand("mode",    &cliCmdMode,     "Operating mode (ADR-005)");
+    (void)cliRegisterCommand("mode",    &cliCmdMode,     "Operating mode [work|config] (ADR-007)");
     (void)cliRegisterCommand("setup",   &cliCmdSetup,    "Start setup wizard");
 }

@@ -10,7 +10,7 @@
 #include "nvs_config.h"
 #include "config_framework.h"
 #include "config_menu.h"
-#include "op_mode.h"
+#include "module_interface.h"
 
 #include <Arduino.h>
 #include <esp_system.h>
@@ -81,7 +81,7 @@ void cliCmdConfig(int argc, char** argv) {
 
     if (std::strcmp(argv[1], "set") == 0) {
         if (!configFrameworkIsEditable()) {
-            s_cli_out->println("Fehler: Config nur im PAUSED Modus");
+            s_cli_out->println("Fehler: Config nur im CONFIG Modus");
             return;
         }
         if (argc < 5) {
@@ -127,8 +127,8 @@ void cliCmdConfig(int argc, char** argv) {
     }
 
     if (std::strcmp(argv[1], "save") == 0) {
-        if (!opModeIsPaused()) {
-            s_cli_out->println("Fehler: Config nur im PAUSED Modus");
+        if (!configFrameworkIsEditable()) {
+            s_cli_out->println("Fehler: Config nur im CONFIG Modus");
             return;
         }
         if (configFrameworkSaveAll()) {
@@ -152,8 +152,8 @@ void cliCmdConfig(int argc, char** argv) {
             s_cli_out->println("  config factory confirm");
             return;
         }
-        if (!opModeIsPaused()) {
-            s_cli_out->println("Fehler: Factory Reset nur im PAUSED Modus");
+        if (!configFrameworkIsEditable()) {
+            s_cli_out->println("Fehler: Factory Reset nur im CONFIG Modus");
             return;
         }
         configFrameworkFactoryReset();

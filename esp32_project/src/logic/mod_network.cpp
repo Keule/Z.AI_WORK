@@ -27,8 +27,8 @@
 #include "pgn_codec.h"
 #include "pgn_registry.h"
 
-// Forward declaration from op_mode.h (avoid OpMode name conflict with module_interface.h)
-extern "C" bool opModeIsPausedStatusBit(void);
+// NOTE: op_mode.h/cpp removed (ADR-007). Paused state is in g_nav.sw.paused
+// (set by modeSet() in module_system.cpp).
 
 #include "log_config.h"
 #define LOG_LOCAL_LEVEL LOG_LEVEL_NET
@@ -573,7 +573,7 @@ static void sendAogFrames(void) {
     uint8_t tx_buf[aog_frame::MAX_FRAME];
     size_t tx_len = 0;
 
-    const bool is_paused = opModeIsPausedStatusBit();
+    const bool is_paused = (modeGet() == OpMode::CONFIG);
     const int16_t angle_x100 = is_paused ? 0 : scaleToInt16(snap.steer_angle_deg, 100.0f);
     const bool imu_valid =
         dep_policy::isImuInputValid(now, snap.imu_timestamp_ms, snap.imu_quality_ok);

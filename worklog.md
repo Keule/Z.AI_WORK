@@ -130,3 +130,34 @@ Stage Summary:
   - Phase 4: Follow-ups — GPIO toggle, NVS persistence (P2)
 - 5 open questions documented for discussion
 - NEXT: User reviews Gesamtkonzept, then Phase 1 implementation
+
+---
+Task ID: 6
+Agent: Main
+Task: Phase 1 — op_mode.h/cpp cleanup (ADR-007 migration)
+
+Work Log:
+- Found all references to op_mode.h/cpp: 8 source files + 2 files themselves
+- Added g_nav.sw.paused management to modeSet() in module_system.cpp:
+  - modeSet(WORK) → g_nav.sw.paused = false
+  - modeSet(CONFIG) → g_nav.sw.paused = true
+  - Both under StateLock (ADR-STATE-001)
+- Updated 6 source files to replace all op_mode API calls:
+  - cmd_system.cpp: opModeRequest(OP_MODE_ACTIVE) → modeSet(OpMode::WORK), CLI usage: "work"/"config"
+  - cmd_config.cpp: opModeIsPaused() → configFrameworkIsEditable() (which now uses modeGet())
+  - config_framework.cpp: opModeIsPaused() → modeGet() == OpMode::CONFIG
+  - config_menu.cpp: opModeIsPaused() → modeGet() != OpMode::CONFIG, all UI text PAUSED→CONFIG
+  - sd_logger_esp32.cpp: opModeGpioPoll() removed (P2 follow-up), opModeIsControlActive() → modeGet() != OpMode::WORK
+  - mod_network.cpp: opModeIsPausedStatusBit() → modeGet() == OpMode::CONFIG
+- Updated comments in state_structs.h and main.cpp
+- Deleted op_mode.h and op_mode.cpp
+- Verified: zero code references to op_mode remain (only 3 comments)
+- Build: SUCCESS, RAM: 26.0%, Flash: 45.8%
+
+Stage Summary:
+- op_mode.h/cpp completely removed — 488 lines of legacy code eliminated
+- Single authoritative OpMode system: module_interface.h (CONFIG/WORK)
+- g_nav.sw.paused automatically set by modeSet() → PGN 253 switchStatus correct
+- GPIO mode-toggle deferred as P2 follow-up (opModeGpioPoll removed)
+- NVS mode persistence deferred as P2 follow-up
+- NEXT: Phase 2 — Sub-task lifecycle cleanup (maintTask ownership)
