@@ -76,6 +76,7 @@ extern void cmd_module_register(void);
 extern void cmd_diag_register(void);
 extern void cmd_actuator_register(void);
 extern void cmd_gnss_register(void);
+extern void cmd_remote_console_register(void);
 
 // ===================================================================
 // Public API (cli.h)
@@ -98,6 +99,7 @@ void cliInit(void) {
     cmd_diag_register();
     cmd_actuator_register();
     cmd_gnss_register();
+    cmd_remote_console_register();
 }
 
 bool cliRegisterCommand(const char* cmd,
