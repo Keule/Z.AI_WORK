@@ -61,6 +61,12 @@
 #define FEAT_COMPILED_LOGSW 0
 #endif
 
+#if defined(FEAT_REMOTE_CONSOLE)
+#define FEAT_COMPILED_REMOTE_CONSOLE 1
+#else
+#define FEAT_COMPILED_REMOTE_CONSOLE 0
+#endif
+
 static_assert(FEAT_COMPILED_ETH, "FEAT_ETH ist Pflicht (mindestens Ethernet/UDP).");
 
 #define FEAT_ENABLED(flag)  ((flag) != 0)
@@ -76,4 +82,5 @@ inline constexpr bool ntrip()  { return FEAT_ENABLED(FEAT_COMPILED_NTRIP); }
 inline constexpr bool sd()     { return FEAT_ENABLED(FEAT_COMPILED_SD); }
 inline constexpr bool safety() { return FEAT_ENABLED(FEAT_COMPILED_SAFETY); }
 inline constexpr bool logsw()  { return FEAT_ENABLED(FEAT_COMPILED_LOGSW); }
+inline constexpr bool remote_console() { return FEAT_ENABLED(FEAT_COMPILED_REMOTE_CONSOLE); }
 }  // namespace feat

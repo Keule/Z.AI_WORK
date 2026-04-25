@@ -33,6 +33,7 @@ enum class ModuleId : uint8_t {
     OTA,            ///< Service: OTA Update
     SPI,            ///< Infrastructure: sensor SPI bus (single-consumer, no mutex)
     SPI_SHARED,     ///< Infrastructure: multi-client SPI arbitration (mutex + CS)
+    REMOTE_CONSOLE, ///< Service: TCP/Telnet Remote Console (DebugConsole wrapper)
     COUNT           ///< Sentinel — NOT a real module
 };
 

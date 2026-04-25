@@ -35,6 +35,7 @@ extern const ModuleOps2 mod_logging_ops;
 extern const ModuleOps2 mod_ota_ops;
 extern const ModuleOps2 mod_spi_ops;
 extern const ModuleOps2 mod_spi_shared_ops;
+extern const ModuleOps2 mod_remote_console_ops;
 
 // ===================================================================
 // Module registry — static array indexed by ModuleId
@@ -58,6 +59,7 @@ static const ModuleOps2* const s_ops_table[] = {
     &mod_ota_ops,         // OTA
     &mod_spi_ops,         // SPI
     &mod_spi_shared_ops,  // SPI_SHARED
+    &mod_remote_console_ops, // REMOTE_CONSOLE
 };
 static constexpr size_t kModuleCount = sizeof(s_ops_table) / sizeof(s_ops_table[0]);
 
@@ -80,6 +82,7 @@ static constexpr uint32_t kDefaultFreshness[] = {
     10000,  // OTA
     0,      // SPI (infrastructure, no freshness timeout)
     0,      // SPI_SHARED (infrastructure, no freshness timeout)
+    5000,   // REMOTE_CONSOLE
 };
 
 // ===================================================================
