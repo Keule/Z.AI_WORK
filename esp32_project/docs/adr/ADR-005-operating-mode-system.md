@@ -1,6 +1,6 @@
 # ADR-005: Betriebsmodus-System (Active / Paused)
 
-- Status: accepted
+- Status: superseded by ADR-007
 - Datum: 2026-04-24
 - Verwandte ADRs: ADR-002 (Taskmodell), ADR-003 (Feature-Module), ADR-STATE-001 (StateLock)
 

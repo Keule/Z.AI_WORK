@@ -1,7 +1,8 @@
 # ADR-007: Two-Task Architecture (task_fast + task_slow)
 
-- Status: proposed
+- Status: accepted
 - Datum: 2025-06-18
+- Supersedes: ADR-002, ADR-005
 - Verwandte ADRs: ADR-002 (Taskmodell — **ersetzt**), ADR-005 (Betriebsmodus — **vereinfacht**), ADR-STATE-001 (StateLock — **weiterhin gültig**), ADR-MODULE-002 (Modulsystem — **weiterhin gültig**)
 
 ## Kontext
