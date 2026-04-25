@@ -233,6 +233,11 @@ static void bootMaintRunCliSession(void) {
         }
 #endif
 
+        // Debug Console: TCP accept/input/disconnect (non-blocking)
+        // CRITICAL: Without this, remote TCP connections are never accepted
+        // during the boot CLI session, and no output/input reaches the client.
+        DBG.loop();
+
         if (s_boot_web_ota_active) {
             s_boot_web_server.handleClient();
             if (!s_boot_eth_url_logged && hal_net_is_connected()) {
