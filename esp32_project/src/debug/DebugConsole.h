@@ -140,6 +140,9 @@ private:
     uint8_t     _iac_buf[3] = {};
     uint8_t     _iac_pos = 0;
 
+    // CR-before-LF conversion state for TCP target
+    uint8_t     _last_tcp_byte = 0;
+
     // Telemetry
     uint32_t    _tcp_bytes_written = 0;
     uint32_t    _tcp_bytes_read = 0;

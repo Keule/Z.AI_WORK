@@ -89,6 +89,7 @@ void DebugConsole::closeClient() {
         _client_fd = -1;
     }
     _iac_pos = 0;
+    _last_tcp_byte = 0;
 }
 
 // ===================================================================
@@ -189,15 +190,33 @@ bool DebugConsole::tryBind() {
 // ===================================================================
 // Print interface — Fan-Out
 // ===================================================================
+//
+// TCP target: lone \n is automatically converted to \r\n so that
+// terminal emulators (Putty, etc.) receive proper CR+LF line endings.
+// Serial (USB-CDC) keeps receiving \n only — the host-side driver
+// usually handles CR translation.
+//
+// We track _last_tcp_byte to avoid emitting \r\r\n when the caller
+// already sent \r\n (e.g. "foo\r\n" should stay "foo\r\n", not
+// "foo\r\r\n").
+//
+
 size_t DebugConsole::write(uint8_t b) {
     if (_targets & DBG_TARGET_SERIAL) {
         Serial.write(b);
     }
 
     if ((_targets & DBG_TARGET_TCP) && _client_fd >= 0) {
+        // Insert CR before lone LF
+        if (b == '\n' && _last_tcp_byte != '\r') {
+            uint8_t cr = '\r';
+            lwip_send(_client_fd, &cr, 1, MSG_DONTWAIT);
+            _tcp_bytes_written++;
+        }
         ssize_t n = lwip_send(_client_fd, &b, 1, MSG_DONTWAIT);
         if (n > 0) {
             _tcp_bytes_written++;
+            _last_tcp_byte = b;
         } else {
             _tcp_drop_count++;
         }
@@ -209,22 +228,46 @@ size_t DebugConsole::write(uint8_t b) {
 size_t DebugConsole::write(const uint8_t* buffer, size_t size) {
     if (size == 0) return 0;
 
+    // Serial: send the whole buffer in one shot (efficient)
     if (_targets & DBG_TARGET_SERIAL) {
         Serial.write(buffer, size);
     }
 
+    // TCP: inline CR-before-LF conversion, do NOT delegate to the
+    // single-byte write() — it would also write to Serial again.
     if ((_targets & DBG_TARGET_TCP) && _client_fd >= 0) {
-        size_t offset = 0;
-        while (offset < size) {
-            const size_t remaining = size - offset;
-            const size_t chunk = (remaining < TCP_WRITE_CHUNK) ? remaining : TCP_WRITE_CHUNK;
-            ssize_t n = lwip_send(_client_fd, buffer + offset, chunk, MSG_DONTWAIT);
-            if (n <= 0) {
-                _tcp_drop_count += remaining;
-                break;
+        // Local staging buffer.  Worst case: every byte needs a CR prefix.
+        uint8_t tmp[TCP_WRITE_CHUNK * 2];
+        size_t tmp_len = 0;
+
+        for (size_t i = 0; i < size; i++) {
+            // Insert CR before lone LF
+            if (buffer[i] == '\n' && _last_tcp_byte != '\r') {
+                tmp[tmp_len++] = '\r';
             }
-            _tcp_bytes_written += n;
-            offset += n;
+            tmp[tmp_len++] = buffer[i];
+            _last_tcp_byte = buffer[i];
+
+            // Flush when staging buffer is full
+            if (tmp_len >= TCP_WRITE_CHUNK) {
+                ssize_t n = lwip_send(_client_fd, tmp, tmp_len, MSG_DONTWAIT);
+                if (n > 0) {
+                    _tcp_bytes_written += n;
+                } else {
+                    _tcp_drop_count += tmp_len;
+                }
+                tmp_len = 0;
+            }
+        }
+
+        // Flush remainder
+        if (tmp_len > 0) {
+            ssize_t n = lwip_send(_client_fd, tmp, tmp_len, MSG_DONTWAIT);
+            if (n > 0) {
+                _tcp_bytes_written += n;
+            } else {
+                _tcp_drop_count += tmp_len;
+            }
         }
     }
 
