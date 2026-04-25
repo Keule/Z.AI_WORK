@@ -31,6 +31,7 @@ epics:
       - TASK-029
       - TASK-032
       - TASK-044
+      - TASK-047
 
   - id: EPIC-002
     title: Sensor and Safety Integration
@@ -720,4 +721,14 @@ tasks:
     priority: high
     delivery_mode: firmware_only
     task_category: platform_reuse
+    dependencies: []
+
+  - id: TASK-047
+    title: Two-Task Architecture — task_fast + task_slow (ersetzt ADR-002)
+    file: backlog/tasks/TASK-047-two-task-architecture.md
+    epic_id: EPIC-001
+    status: open
+    priority: high
+    delivery_mode: firmware_only
+    task_category: runtime_stability
     dependencies: []
