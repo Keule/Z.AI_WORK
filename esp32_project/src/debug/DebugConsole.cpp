@@ -2,16 +2,15 @@
  * @file DebugConsole.cpp
  * @brief Network Console — Fan-Out Multiplexer for USB-Serial + TCP/Telnet.
  *
- * Uses raw lwIP BSD sockets instead of WiFiServer/WiFiClient.
- * This avoids silent bind failures that WiFiServer suffers from when
- * the network interface (ETH.h / W5500) is not yet ready at boot time.
+ * Uses raw lwIP BSD sockets (lwip_socket/lwip_bind/lwip_listen/lwip_accept)
+ * instead of WiFiServer/WiFiClient.  Same underlying API that WiFiServer uses
+ * internally, but with:
+ *   - Deferred bind with retry (network may not be ready at boot)
+ *   - Explicit error logging on bind failure
+ *   - No silent failures
  *
- * Key design:
- *   - Socket creation + bind is deferred to loop() with retry logic.
- *   - If bind() fails (no network yet), it retries every BIND_RETRY_MS.
- *   - Once bound, accept() is called non-blocking in loop().
- *   - Client I/O uses send()/recv() directly — no WiFiClient wrapper.
- *   - All socket operations are non-blocking (O_NONBLOCK).
+ * All lwIP socket calls use the lwip_ prefix (lwip_socket, lwip_bind, etc.)
+ * matching the pattern in ESP32's WiFiServer.cpp.
  */
 
 #include "DebugConsole.h"
@@ -19,8 +18,6 @@
 #include <lwip/sockets.h>
 #include <lwip/netdb.h>
 #include <lwip/inet.h>
-#include <unistd.h>
-#include <fcntl.h>
 #include <cerrno>
 #include <cstring>
 
@@ -57,13 +54,10 @@ DebugConsole::~DebugConsole() {
 // ===================================================================
 void DebugConsole::begin(uint16_t tcp_port) {
     if (_tcp_enabled && _tcp_port == tcp_port) {
-        return;  // Already configured
+        return;
     }
-
-    // Clean up any existing state
     closeClient();
     closeServerSocket();
-
     _tcp_port = tcp_port;
     _tcp_enabled = true;
     _bound = false;
@@ -71,9 +65,6 @@ void DebugConsole::begin(uint16_t tcp_port) {
     _client_fd = -1;
     _last_bind_attempt = 0;
     _targets |= DBG_TARGET_TCP;
-
-    // Note: actual socket bind is deferred to loop()
-    // because the network interface may not be ready yet.
 }
 
 void DebugConsole::end() {
@@ -86,7 +77,7 @@ void DebugConsole::end() {
 
 void DebugConsole::closeServerSocket() {
     if (_server_fd >= 0) {
-        ::close(_server_fd);
+        lwip_close(_server_fd);
         _server_fd = -1;
     }
     _bound = false;
@@ -94,7 +85,7 @@ void DebugConsole::closeServerSocket() {
 
 void DebugConsole::closeClient() {
     if (_client_fd >= 0) {
-        ::close(_client_fd);
+        lwip_close(_client_fd);
         _client_fd = -1;
     }
     _iac_pos = 0;
@@ -118,24 +109,21 @@ void DebugConsole::enableTcp(bool enable) {
 bool DebugConsole::isTcpClientConnected() {
     if (_client_fd < 0) return false;
 
-    // Check if socket is still connected using recv() with MSG_DONTWAIT + PEEK
     char dummy;
-    ssize_t n = ::recv(_client_fd, &dummy, 1, MSG_DONTWAIT | MSG_PEEK);
+    ssize_t n = lwip_recv(_client_fd, &dummy, 1, MSG_DONTWAIT | MSG_PEEK);
     if (n == 0) {
-        // Remote closed connection
         closeClient();
         return false;
     }
     if (n < 0) {
         int err = errno;
         if (err == EWOULDBLOCK || err == EAGAIN) {
-            return true;  // Still connected, no data available
+            return true;
         }
-        // Error — connection lost
         closeClient();
         return false;
     }
-    return true;  // Data available, still connected
+    return true;
 }
 
 // ===================================================================
@@ -146,53 +134,49 @@ bool DebugConsole::tryBind() {
 
     uint32_t now = millis();
     if (now - _last_bind_attempt < BIND_RETRY_MS) {
-        return false;  // Throttle retries
+        return false;
     }
     _last_bind_attempt = now;
 
-    // Close any stale socket
     if (_server_fd >= 0) {
-        ::close(_server_fd);
+        lwip_close(_server_fd);
         _server_fd = -1;
     }
 
-    // Create socket
-    _server_fd = ::socket(AF_INET, SOCK_STREAM, 0);
+    _server_fd = lwip_socket(AF_INET, SOCK_STREAM, 0);
     if (_server_fd < 0) {
         Serial.printf("[DBG] socket() failed: errno=%d\n", errno);
         return false;
     }
 
-    // Allow address reuse
     int opt = 1;
-    ::setsockopt(_server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    lwip_setsockopt(_server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
     // Non-blocking
-    ::fcntl(_server_fd, F_SETFL, O_NONBLOCK);
+    int flags = lwip_fcntl(_server_fd, F_GETFL, 0);
+    if (flags >= 0) lwip_fcntl(_server_fd, F_SETFL, flags | O_NONBLOCK);
 
-    // Disable Nagle for low latency
+    // Disable Nagle
     int nodelay = 1;
-    ::setsockopt(_server_fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
+    lwip_setsockopt(_server_fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
 
-    // Bind to INADDR_ANY (all interfaces — ETH + WiFi)
     struct sockaddr_in addr;
-    std::memset(&addr, 0, sizeof(addr));
+    memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = htonl(INADDR_ANY);
     addr.sin_port = htons(_tcp_port);
 
-    if (::bind(_server_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+    if (lwip_bind(_server_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
         Serial.printf("[DBG] bind(port %u) failed: errno=%d (retrying...)\n",
                        (unsigned)_tcp_port, errno);
-        ::close(_server_fd);
+        lwip_close(_server_fd);
         _server_fd = -1;
         return false;
     }
 
-    // Listen (backlog = 1 — we only accept one client at a time)
-    if (::listen(_server_fd, 1) < 0) {
+    if (lwip_listen(_server_fd, 1) < 0) {
         Serial.printf("[DBG] listen() failed: errno=%d\n", errno);
-        ::close(_server_fd);
+        lwip_close(_server_fd);
         _server_fd = -1;
         return false;
     }
@@ -206,14 +190,12 @@ bool DebugConsole::tryBind() {
 // Print interface — Fan-Out
 // ===================================================================
 size_t DebugConsole::write(uint8_t b) {
-    // Always write to USB-Serial
     if (_targets & DBG_TARGET_SERIAL) {
         Serial.write(b);
     }
 
-    // Write to TCP client
     if ((_targets & DBG_TARGET_TCP) && _client_fd >= 0) {
-        ssize_t n = ::send(_client_fd, &b, 1, MSG_DONTWAIT);
+        ssize_t n = lwip_send(_client_fd, &b, 1, MSG_DONTWAIT);
         if (n > 0) {
             _tcp_bytes_written++;
         } else {
@@ -227,20 +209,17 @@ size_t DebugConsole::write(uint8_t b) {
 size_t DebugConsole::write(const uint8_t* buffer, size_t size) {
     if (size == 0) return 0;
 
-    // Always write to USB-Serial
     if (_targets & DBG_TARGET_SERIAL) {
         Serial.write(buffer, size);
     }
 
-    // Write to TCP client (chunked to limit per-call blocking)
     if ((_targets & DBG_TARGET_TCP) && _client_fd >= 0) {
         size_t offset = 0;
         while (offset < size) {
             const size_t remaining = size - offset;
             const size_t chunk = (remaining < TCP_WRITE_CHUNK) ? remaining : TCP_WRITE_CHUNK;
-            ssize_t n = ::send(_client_fd, buffer + offset, chunk, MSG_DONTWAIT);
+            ssize_t n = lwip_send(_client_fd, buffer + offset, chunk, MSG_DONTWAIT);
             if (n <= 0) {
-                // Socket full or error — drop the rest
                 _tcp_drop_count += remaining;
                 break;
             }
@@ -254,23 +233,14 @@ size_t DebugConsole::write(const uint8_t* buffer, size_t size) {
 
 void DebugConsole::flush() {
     Serial.flush();
-    // No-op for TCP — lwIP handles TCP flush internally
 }
 
 // ===================================================================
 // Stream interface (input — not used directly)
 // ===================================================================
-int DebugConsole::available() {
-    return 0;
-}
-
-int DebugConsole::peek() {
-    return -1;
-}
-
-int DebugConsole::read() {
-    return -1;
-}
+int DebugConsole::available() { return 0; }
+int DebugConsole::peek() { return -1; }
+int DebugConsole::read() { return -1; }
 
 // ===================================================================
 // Loop — deferred bind / accept / read / disconnect
@@ -278,16 +248,12 @@ int DebugConsole::read() {
 void DebugConsole::loop() {
     if (!_tcp_enabled) return;
 
-    // --- Deferred bind: retry if not yet bound ---
     if (!_bound) {
         tryBind();
-        if (!_bound) return;  // Network not ready yet
+        if (!_bound) return;
     }
 
-    // --- Accept new connection ---
     acceptNewClient();
-
-    // --- Read input from connected client ---
     readClientInput();
 }
 
@@ -295,63 +261,55 @@ void DebugConsole::acceptNewClient() {
     if (_server_fd < 0 || !_bound) return;
 
     if (_client_fd >= 0) {
-        // Check if existing client is still connected
         if (!isTcpClientConnected()) {
-            // Client disconnected — already cleaned up by isTcpClientConnected()
+            // Disconnected — cleaned up by isTcpClientConnected()
         } else {
-            // Client still connected — check if a NEW client is waiting
-            // (we only allow one client; reject additional connections)
+            // Still connected — check for new client (reject: 1 client max)
             struct sockaddr_in client_addr;
             socklen_t addr_len = sizeof(client_addr);
-            int new_fd = ::accept(_server_fd, (struct sockaddr*)&client_addr, &addr_len);
+            int new_fd = lwip_accept(_server_fd, (struct sockaddr*)&client_addr, &addr_len);
             if (new_fd >= 0) {
-                // Notify old client
                 const char* msg = "\r\nConnection taken over by another client.\r\n";
-                ::send(_client_fd, msg, std::strlen(msg), MSG_DONTWAIT);
-                // Close old
-                ::close(_client_fd);
+                lwip_send(_client_fd, msg, strlen(msg), MSG_DONTWAIT);
+                lwip_close(_client_fd);
                 _client_fd = new_fd;
                 _tcp_connect_count++;
-                // Set options on new client
                 int nodelay = 1;
-                ::setsockopt(_client_fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
-                // Welcome
-                const char* welcome = "\r\n=== AgSteer Remote Console ===\r\n"
-                                       "Device: AgSteer ESP32-S3\r\n"
-                                       "Type 'help' for available commands.\r\n\r\n";
-                ::send(_client_fd, welcome, std::strlen(welcome), MSG_DONTWAIT);
-                // Also print to Serial
-                Serial.println("=== AgSteer Remote Console === (new client connected)");
+                lwip_setsockopt(_client_fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
+                const char* welcome =
+                    "\r\n=== AgSteer Remote Console ===\r\n"
+                    "Device: AgSteer ESP32-S3\r\n"
+                    "Type 'help' for available commands.\r\n\r\n";
+                lwip_send(_client_fd, welcome, strlen(welcome), MSG_DONTWAIT);
+                Serial.println("=== AgSteer Remote Console === (new client)");
             }
             return;
         }
     }
 
-    // No client connected — try to accept one
+    // No client — try accept
     struct sockaddr_in client_addr;
     socklen_t addr_len = sizeof(client_addr);
-    int new_fd = ::accept(_server_fd, (struct sockaddr*)&client_addr, &addr_len);
+    int new_fd = lwip_accept(_server_fd, (struct sockaddr*)&client_addr, &addr_len);
     if (new_fd < 0) {
         if (errno != EWOULDBLOCK && errno != EAGAIN) {
-            // Unexpected error — try to recover
             Serial.printf("[DBG] accept() error: errno=%d\n", errno);
         }
         return;
     }
 
-    // New client connected!
     _client_fd = new_fd;
     _tcp_connect_count++;
 
-    // Set non-blocking + no-delay
-    ::fcntl(_client_fd, F_SETFL, O_NONBLOCK);
+    int flags = lwip_fcntl(_client_fd, F_GETFL, 0);
+    if (flags >= 0) lwip_fcntl(_client_fd, F_SETFL, flags | O_NONBLOCK);
     int nodelay = 1;
-    ::setsockopt(_client_fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
+    lwip_setsockopt(_client_fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
 
     // Welcome banner (via DebugConsole → Serial + TCP)
     Serial.println("=== AgSteer Remote Console ===");
-    Serial.printf("Device: AgSteer ESP32-S3\n");
-    Serial.printf("Type 'help' for available commands.\n");
+    Serial.println("Device: AgSteer ESP32-S3");
+    Serial.println("Type 'help' for available commands.");
     Serial.println();
 }
 
@@ -363,13 +321,11 @@ void DebugConsole::readClientInput() {
 
     char buf[32];
     while (true) {
-        ssize_t n = ::recv(_client_fd, buf, sizeof(buf), MSG_DONTWAIT);
+        ssize_t n = lwip_recv(_client_fd, buf, sizeof(buf), MSG_DONTWAIT);
         if (n <= 0) {
             if (n == 0) {
-                // Remote closed connection
                 closeClient();
             } else if (errno != EWOULDBLOCK && errno != EAGAIN) {
-                // Error
                 Serial.printf("[DBG] recv() error: errno=%d\n", errno);
                 closeClient();
             }
@@ -380,7 +336,6 @@ void DebugConsole::readClientInput() {
             const uint8_t c = static_cast<uint8_t>(buf[i]);
             _tcp_bytes_read++;
 
-            // --- Telnet negotiation detection ---
             if (c == IAC && _iac_pos == 0) {
                 _iac_buf[0] = c;
                 _iac_pos = 1;
@@ -393,32 +348,28 @@ void DebugConsole::readClientInput() {
                     handleTelnetNegotiation(_iac_buf[1], _iac_buf[2]);
                     _iac_pos = 0;
                 }
-                continue;  // Don't pass negotiation bytes to callback
+                continue;
             }
 
-            // --- Normal character → callback ---
             _input_cb(c);
         }
     }
 }
 
 // ===================================================================
-// Telnet negotiation (minimal: echo + character mode)
+// Telnet negotiation
 // ===================================================================
 void DebugConsole::handleTelnetNegotiation(uint8_t cmd, uint8_t opt) {
     uint8_t response[3] = {IAC, 0, opt};
 
     switch (cmd) {
         case DO:
-            if (opt == OPT_ECHO) {
-                response[1] = WILL;
-            } else if (opt == OPT_SGA) {
+            if (opt == OPT_ECHO || opt == OPT_SGA) {
                 response[1] = WILL;
             } else {
                 response[1] = WONT;
             }
             break;
-
         case WILL:
             if (opt == OPT_SGA) {
                 response[1] = DO;
@@ -426,17 +377,15 @@ void DebugConsole::handleTelnetNegotiation(uint8_t cmd, uint8_t opt) {
                 response[1] = DONT;
             }
             break;
-
         case WONT:
         case DONT:
-            return;  // Nothing to respond
-
+            return;
         default:
-            return;  // Ignore SB and other commands
+            return;
     }
 
     if (_client_fd >= 0) {
-        ::send(_client_fd, response, 3, MSG_DONTWAIT);
+        lwip_send(_client_fd, response, 3, MSG_DONTWAIT);
     }
 }
 
