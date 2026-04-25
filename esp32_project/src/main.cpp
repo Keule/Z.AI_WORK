@@ -805,7 +805,7 @@ static void controlTaskFunc(void* param) {
                 float hz = (ctrl_dbg_count * 1000.0f) / (float)(freq_now - ctrl_freq_start);
                 ctrl_freq_start = freq_now;
                 ctrl_dbg_count = 0;
-                DBG.printf("[DBG-CTRL] %.1f Hz\n", hz);
+                DBG.printf("[DBG-CTRL] %.1f Hz\r\n", hz);
             }
         }
 
@@ -889,7 +889,7 @@ static void commTaskFunc(void* param) {
                 float hz = (comm_dbg_count * 1000.0f) / (float)(freq_now - comm_freq_start);
                 comm_freq_start = freq_now;
                 comm_dbg_count = 0;
-                DBG.printf("[DBG-COMM] %.1f Hz\n", hz);
+                DBG.printf("[DBG-COMM] %.1f Hz\r\n", hz);
             }
         }
 
@@ -1113,7 +1113,7 @@ static void loopDebugHeartbeat(void) {
                 (s_loop_freq_samples * 1000.0f) / (float)(freq_now_ms - s_loop_freq_start_ms);
             s_loop_freq_start_ms = freq_now_ms;
             s_loop_freq_samples = 0;
-            DBG.printf("[DBG-LOOP] %.1f Hz\n", hz);
+            DBG.printf("[DBG-LOOP] %.1f Hz\r\n", hz);
         }
     }
 }
