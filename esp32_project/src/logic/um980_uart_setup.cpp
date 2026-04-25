@@ -9,6 +9,7 @@
 
 #include "fw_config.h"
 #include "hal/hal.h"
+#include "debug/DebugConsole.h"
 
 static Um980UartSetup s_um980_setup;
 static constexpr size_t CONSOLE_SEGMENT_WIDTH = 60;
@@ -125,8 +126,8 @@ void um980SetupConsoleTick(void) {
     pollConsole(Serial2, s_um980_setup.console_b, s_console_acc_b, &s_console_len_b, CONSOLE_SEGMENT_WIDTH);
     if (!s_console_dirty) return;
 
-    Serial.print("\r");
-    Serial.print(s_console_frame);
+    DBG.print("\r");
+    DBG.print(s_console_frame);
     if (s_console_mirror) {
         s_console_mirror->print("\r");
         s_console_mirror->print(s_console_frame);
@@ -147,10 +148,10 @@ void um980SetupSetRole(uint8_t port_idx, uint8_t role) {
     }
     // Warnung bei gleichem Rolle auf beiden UARTs
     if (port_idx == 0 && s_um980_setup.role_a != 0 && s_um980_setup.role_a == s_um980_setup.role_b) {
-        Serial.println("WARNUNG: Beide UARTs haben dieselbe Rolle!");
+        DBG.println("WARNUNG: Beide UARTs haben dieselbe Rolle!");
     }
     if (port_idx == 1 && s_um980_setup.role_b != 0 && s_um980_setup.role_b == s_um980_setup.role_a) {
-        Serial.println("WARNUNG: Beide UARTs haben dieselbe Rolle!");
+        DBG.println("WARNUNG: Beide UARTs haben dieselbe Rolle!");
     }
 }
 

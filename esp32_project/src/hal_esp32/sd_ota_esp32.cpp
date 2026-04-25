@@ -20,6 +20,7 @@
 #include "fw_config.h"
 #include "logic/module_interface.h"
 #include "logic/sd_ota.h"
+#include "debug/DebugConsole.h"
 
 #include "logic/log_config.h"
 #define LOG_LOCAL_LEVEL LOG_LEVEL_OTA
@@ -457,7 +458,7 @@ bool updateFirmwareFromSD(void) {
     hal_delay_ms(2000);
 
     LOGI("OTA", "RESTARTING NOW");
-    Serial.flush();
+    DBG.flush();
     ESP.restart();
 
     // Should never reach here

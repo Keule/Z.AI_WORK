@@ -427,6 +427,7 @@ static void maintTaskFunc(void* param) {
                 hal_tcp_disconnect();
             }
         } else {
+        
             ntripTick();
         }
 #endif

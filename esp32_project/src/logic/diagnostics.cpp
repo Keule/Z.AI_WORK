@@ -15,6 +15,7 @@
 #include "module_interface.h"
 #include "features.h"
 #include "sd_logger.h"
+#include "debug/DebugConsole.h"
 
 #if FEAT_ENABLED(FEAT_COMPILED_NTRIP)
 #include "ntrip.h"
@@ -193,7 +194,7 @@ DiagSelftestResult diagRunSelftest(void) {
 
 void diagPrintModuleStatus(void* output_stream) {
     auto* out = static_cast<Stream*>(output_stream);
-    if (!out) out = &Serial;
+    if (!out) out = &DBG;
 
     out->println("=== Module Status ===");
     out->printf("  %-8s Active   Detected  Healthy  Error\n", "Module");
@@ -221,7 +222,7 @@ static constexpr int GPIO_MAX = 48;
 
 void diagPrintPinMap(void* output_stream) {
     auto* out = static_cast<Stream*>(output_stream);
-    if (!out) out = &Serial;
+    if (!out) out = &DBG;
 
     out->println("=== Pin-Claim Map ===");
 
@@ -246,10 +247,10 @@ void diagPrintPinMap(void* output_stream) {
 // ===================================================================
 
 void diagPrintLogStats(void) {
-    Serial.println("=== SD-Log Statistiken ===");
+    DBG.println("=== SD-Log Statistiken ===");
 
     if (!moduleSysIsActive(ModuleId::LOGGING)) {
-        Serial.println("  SD Modul nicht aktiv");
+        DBG.println("  SD Modul nicht aktiv");
         return;
     }
 
@@ -260,14 +261,14 @@ void diagPrintLogStats(void) {
     bool psram = sdLoggerPsramBufferActive();
     uint32_t psram_count = sdLoggerPsramBufferCount();
 
-    Serial.printf("  Gesamt geschrieben:    %lu Records\n", (unsigned long)flushed);
-    Serial.printf("  Buffer Fuellstand:      %lu Records\n", (unsigned long)buf_count);
-    Serial.printf("  Buffer Overflows:       %lu\n", (unsigned long)overflow);
-    Serial.printf("  PSRAM Buffer:           %s\n", psram ? "AKTIV" : "nicht aktiv");
+    DBG.printf("  Gesamt geschrieben:    %lu Records\n", (unsigned long)flushed);
+    DBG.printf("  Buffer Fuellstand:      %lu Records\n", (unsigned long)buf_count);
+    DBG.printf("  Buffer Overflows:       %lu\n", (unsigned long)overflow);
+    DBG.printf("  PSRAM Buffer:           %s\n", psram ? "AKTIV" : "nicht aktiv");
     if (psram) {
-        Serial.printf("  PSRAM Buffer Count:     %lu Records\n", (unsigned long)psram_count);
+        DBG.printf("  PSRAM Buffer Count:     %lu Records\n", (unsigned long)psram_count);
     }
-    Serial.printf("  Logging aktiv:          %s\n", sdLoggerIsActive() ? "JA" : "NEIN");
+    DBG.printf("  Logging aktiv:          %s\n", sdLoggerIsActive() ? "JA" : "NEIN");
 }
 
 // ===================================================================
@@ -277,16 +278,16 @@ void diagPrintLogStats(void) {
 bool diagExportLogCsv(void) {
     // Nur im PAUSED Modus zulaessig!
     if (modeGet() != OpMode::CONFIG) {
-        Serial.println("Fehler: CSV Export nur im PAUSED Modus zulaessig");
+        DBG.println("Fehler: CSV Export nur im PAUSED Modus zulaessig");
         return false;
     }
 
     if (!moduleSysIsActive(ModuleId::LOGGING)) {
-        Serial.println("Fehler: SD Modul nicht aktiv");
+        DBG.println("Fehler: SD Modul nicht aktiv");
         return false;
     }
 
-    Serial.println("SD Log CSV Export gestartet...");
+    DBG.println("SD Log CSV Export gestartet...");
 
 #if defined(ARDUINO_ARCH_ESP32)
     // SPI Bus freigeben (Sensor-SPI deinit)
@@ -299,7 +300,7 @@ bool diagExportLogCsv(void) {
     bool result = false;
 
     if (!SD.begin(SD_CS, sdSPI, 4000000, "/sd", 5)) {
-        Serial.println("Fehler: SD Karte nicht verfuegbar");
+        DBG.println("Fehler: SD Karte nicht verfuegbar");
         goto cleanup;
     }
 
@@ -316,35 +317,35 @@ bool diagExportLogCsv(void) {
         }
 
         if (latest < 0) {
-            Serial.println("Keine Log-Dateien gefunden");
+            DBG.println("Keine Log-Dateien gefunden");
             goto cleanup;
         }
 
         snprintf(path, sizeof(path), "/log_%03d.csv", latest);
         File f = SD.open(path, FILE_READ);
         if (!f) {
-            Serial.printf("Fehler: %s nicht lesbar\n", path);
+            DBG.printf("Fehler: %s nicht lesbar\n", path);
             goto cleanup;
         }
 
-        Serial.printf("--- %s ---\n", path);
+        DBG.printf("--- %s ---\n", path);
         // Datei zeilenweise ueber Serial streamen
         char line[256];
         while (f.available()) {
             int len = f.readBytesUntil('\n', line, sizeof(line) - 1);
             if (len <= 0) break;
             line[len] = '\0';
-            Serial.println(line);
+            DBG.println(line);
 
-            // Pausen vermeiden Serial-Buffer-Ueberlauf
+            // Pausen vermeiden Buffer-Ueberlauf (USB CDC + TCP)
             if (Serial.availableForWrite() < 128) {
-                Serial.flush();
+                DBG.flush();
                 delay(5);
             }
         }
         f.close();
-        Serial.println("--- EOF ---");
-        Serial.printf("Export abgeschlossen: %s\n", path);
+        DBG.println("--- EOF ---");
+        DBG.printf("Export abgeschlossen: %s\n", path);
         result = true;
     }
 
@@ -355,7 +356,7 @@ cleanup:
     return result;
 
 #else
-    Serial.println("Fehler: SD Export nicht auf dieser Plattform verfuegbar");
+    DBG.println("Fehler: SD Export nicht auf dieser Plattform verfuegbar");
     return false;
 #endif
 }

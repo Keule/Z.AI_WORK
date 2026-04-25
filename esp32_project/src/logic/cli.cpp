@@ -10,6 +10,7 @@
 
 #include "log_config.h"
 #include "log_ext.h"
+#include "debug/DebugConsole.h"
 
 #include <Arduino.h>
 
@@ -19,7 +20,7 @@
 // ===================================================================
 // Output stream (shared with cmd_*.cpp files via extern)
 // ===================================================================
-Stream* s_cli_out = &Serial;
+Stream* s_cli_out = &DBG;
 
 // ===================================================================
 // Command registry
@@ -41,7 +42,7 @@ CliCommand s_cli_cmd_table[CLI_MAX_COMMANDS] = {};
 size_t s_cli_cmd_count = 0;
 
 void cliCmdUnknown(const char* cmd) {
-    s_cli_out->printf("Unknown command: %s\n", cmd ? cmd : "");
+    s_cli_out->printf("Unknown command: %s\r\n", cmd ? cmd : "");
     s_cli_out->println("Type 'help' for available commands.");
 }
 
@@ -81,7 +82,7 @@ extern void cmd_gnss_register(void);
 // ===================================================================
 
 void cliSetOutput(Stream* out) {
-    s_cli_out = out ? out : &Serial;
+    s_cli_out = out ? out : &DBG;
 }
 
 void cliInit(void) {
@@ -123,7 +124,7 @@ bool cliRegisterCommand(const char* cmd,
 void cliPrintHelp(void) {
     s_cli_out->println("Available commands:");
     for (size_t i = 0; i < s_cli_cmd_count; ++i) {
-        s_cli_out->printf("  %-10s %s\n", s_cli_cmd_table[i].cmd, s_cli_cmd_table[i].help_short);
+        s_cli_out->printf("  %-10s %s\r\n", s_cli_cmd_table[i].cmd, s_cli_cmd_table[i].help_short);
     }
     s_cli_out->println("  log ...    Runtime log controls");
     s_cli_out->println("  filter ... Runtime log file:line filter");
