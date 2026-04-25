@@ -553,48 +553,8 @@ static void bootInitCommunication(void) {
     // Serial CLI initialisieren
     cliInit();
 
-    // Debug Console: TCP/Telnet server (fan-out to Serial + TCP)
-    // DBG is already writing to Serial since construction.
-    // begin() starts the TCP server; enableTcp(true) activates it.
-    DBG.begin(23);              // TCP port 23 (telnet)
-    DBG.enableTcp(true);
-    DBG.setInputCallback([](uint8_t c) {
-        // TCP client input → same CLI processing as Serial input
-        static char s_tcp_buf[128];
-        static size_t s_tcp_len = 0;
-
-        s_cli_last_rx_ms = hal_millis();
-        if (c == '\r' || c == '\n') {
-            if (s_tcp_len > 0) {
-                s_tcp_buf[s_tcp_len] = '\0';
-                DBG.println();  // Echo newline to both consoles
-                cliProcessLine(s_tcp_buf);
-                s_tcp_len = 0;
-            }
-        } else if (c == 3) {  // Ctrl+C
-            s_tcp_len = 0;
-            DBG.println("^C");
-        } else if (c == 8 || c == 127) {  // Backspace / DEL
-            if (s_tcp_len > 0) {
-                s_tcp_len--;
-                DBG.print("\b \b");
-            }
-        } else if (s_tcp_len + 1 < sizeof(s_tcp_buf)) {
-            s_tcp_buf[s_tcp_len++] = static_cast<char>(c);
-            DBG.print(static_cast<char>(c));  // Echo to both consoles
-        }
-    });
-    // s_cli_out is already &DBG (set in cli.cpp default), so all CLI
-    // command output now automatically goes to Serial + TCP.
-    {
-        char ip_buf[20] = {0};
-        if (hal_net_is_connected()) {
-            formatIpU32(hal_net_get_ip(), ip_buf, sizeof(ip_buf));
-            hal_log("DBG: TCP console listening on %s:23 (telnet/nc)", ip_buf);
-        } else {
-            hal_log("DBG: TCP console listening on port 23 (waiting for network...)");
-        }
-    }
+    // Debug Console TCP server already initialized in bootInitDebugConsole().
+    // Input callback already set there.  Nothing to do here.
 
     // NTRIP Client (conditional compile)
 #if FEAT_ENABLED(FEAT_COMPILED_NTRIP)
