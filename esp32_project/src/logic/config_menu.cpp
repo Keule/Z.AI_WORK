@@ -30,6 +30,7 @@
 #include "runtime_config.h"
 #include "nvs_config.h"
 #include "hal/hal.h"
+#include "debug/DebugConsole.h"
 
 #include "log_config.h"
 #define LOG_LOCAL_LEVEL LOG_LEVEL_CFG
@@ -69,15 +70,15 @@ static int menuReadLine(char* buf, size_t buf_size, uint32_t deadline_ms) {
     while (pos < buf_size - 1) {
         // Timeout-Check
         if (hal_millis() > deadline_ms) {
-            Serial.println();
-            Serial.println("(Timeout)");
+            DBG.println();
+            DBG.println("(Timeout)");
             return -1;
         }
 
         // Modus-Check: Wenn nicht mehr PAUSED, abbrechen
         if (!opModeIsPaused()) {
-            Serial.println();
-            Serial.println("(Modus gewechselt — Menu beendet)");
+            DBG.println();
+            DBG.println("(Modus gewechselt — Menu beendet)");
             return -1;
         }
 
@@ -88,7 +89,7 @@ static int menuReadLine(char* buf, size_t buf_size, uint32_t deadline_ms) {
                 if (pos > 0) {
                     // Zeile abgeschlossen
                     buf[pos] = '\0';
-                    Serial.println();
+                    DBG.println();
                     return static_cast<int>(pos);
                 }
                 // Leere Zeile — ignorieren
@@ -97,7 +98,7 @@ static int menuReadLine(char* buf, size_t buf_size, uint32_t deadline_ms) {
 
             if (ch == 0x03 || ch == 0x1B) {
                 // Ctrl-C oder ESC — Abbruch
-                Serial.println("^C");
+                DBG.println("^C");
                 return -1;
             }
 
@@ -105,7 +106,7 @@ static int menuReadLine(char* buf, size_t buf_size, uint32_t deadline_ms) {
                 // Backspace
                 if (pos > 0) {
                     pos--;
-                    Serial.print("\b \b");
+                    DBG.print("\b \b");
                 }
                 continue;
             }
@@ -115,9 +116,9 @@ static int menuReadLine(char* buf, size_t buf_size, uint32_t deadline_ms) {
 
             // Passwort-Maskierung: Sternchen anzeigen statt Zeichen
             if (false) { /* Aktuell keine context-bewusste Maskierung im Hauptmenu */
-                Serial.print('*');
+                DBG.print('*');
             } else {
-                Serial.print(static_cast<char>(ch));
+                DBG.print(static_cast<char>(ch));
             }
         } else {
             delay(10);  // kurze Pause um CPU-Last zu reduzieren
@@ -125,7 +126,7 @@ static int menuReadLine(char* buf, size_t buf_size, uint32_t deadline_ms) {
     }
 
     buf[buf_size - 1] = '\0';
-    Serial.println();
+    DBG.println();
     return static_cast<int>(pos);
 }
 
@@ -134,35 +135,35 @@ static int menuReadLine(char* buf, size_t buf_size, uint32_t deadline_ms) {
 // ===================================================================
 
 static void menuPrintMain(void) {
-    Serial.println();
-    Serial.println("╔══════════════════════════════════════════╗");
-    Serial.println("║     AgSteer Konfigurations-Menu          ║");
-    Serial.println("║     (PAUSED Modus)                       ║");
-    Serial.println("╠══════════════════════════════════════════╣");
-    Serial.println("║ 1 — Netzwerk                            ║");
-    Serial.println("║ 2 — NTRIP                               ║");
-    Serial.println("║ 3 — GNSS                                ║");
-    Serial.println("║ 4 — PID Regler                          ║");
-    Serial.println("║ 5 — Aktuator                            ║");
-    Serial.println("║ 6 — System                              ║");
-    Serial.println("╠══════════════════════════════════════════╣");
-    Serial.println("║ S — Alle speichern                      ║");
-    Serial.println("║ L — Alle laden                          ║");
-    Serial.println("║ F — Werkseinstellungen (Factory Reset)   ║");
-    Serial.println("║ X — Menu verlassen                      ║");
-    Serial.println("╚══════════════════════════════════════════╝");
-    Serial.print("> ");
+    DBG.println();
+    DBG.println("╔══════════════════════════════════════════╗");
+    DBG.println("║     AgSteer Konfigurations-Menu          ║");
+    DBG.println("║     (PAUSED Modus)                       ║");
+    DBG.println("╠══════════════════════════════════════════╣");
+    DBG.println("║ 1 — Netzwerk                            ║");
+    DBG.println("║ 2 — NTRIP                               ║");
+    DBG.println("║ 3 — GNSS                                ║");
+    DBG.println("║ 4 — PID Regler                          ║");
+    DBG.println("║ 5 — Aktuator                            ║");
+    DBG.println("║ 6 — System                              ║");
+    DBG.println("╠══════════════════════════════════════════╣");
+    DBG.println("║ S — Alle speichern                      ║");
+    DBG.println("║ L — Alle laden                          ║");
+    DBG.println("║ F — Werkseinstellungen (Factory Reset)   ║");
+    DBG.println("║ X — Menu verlassen                      ║");
+    DBG.println("╚══════════════════════════════════════════╝");
+    DBG.print("> ");
 }
 
 /// Kategorie-Submenu.
 static void menuCategory(const ConfigCategoryOps* ops) {
     if (!ops) return;
 
-    Serial.println();
-    Serial.printf("=== %s ===\n", ops->name);
-    Serial.println("  set <key> <value>  — Wert aendern");
-    Serial.println("  show               — Werte anzeigen");
-    Serial.println("  back               — Zurueck");
+    DBG.println();
+    DBG.printf("=== %s ===\n", ops->name);
+    DBG.println("  set <key> <value>  — Wert aendern");
+    DBG.println("  show               — Werte anzeigen");
+    DBG.println("  back               — Zurueck");
 
     char line[MENU_LINE_MAX];
     uint32_t deadline = hal_millis() + MENU_TIMEOUT_MS;
@@ -170,15 +171,15 @@ static void menuCategory(const ConfigCategoryOps* ops) {
     while (true) {
         // Timeout-Check
         if (hal_millis() > deadline) {
-            Serial.println("(Timeout)");
+            DBG.println("(Timeout)");
             return;
         }
         if (!opModeIsPaused()) {
-            Serial.println("(Modus gewechselt)");
+            DBG.println("(Modus gewechselt)");
             return;
         }
 
-        Serial.print("  > ");
+        DBG.print("  > ");
         int len = menuReadLine(line, sizeof(line), deadline);
         if (len <= 0) return;
 
@@ -202,40 +203,40 @@ static void menuCategory(const ConfigCategoryOps* ops) {
 
         if (std::strcmp(argv[0], "show") == 0) {
             if (ops->show) {
-                ops->show(static_cast<ConfigStream>(&Serial));
+                ops->show(static_cast<ConfigStream>(&DBG));
             } else {
-                Serial.println("  (keine Show-Funktion)");
+                DBG.println("  (keine Show-Funktion)");
             }
             continue;
         }
 
         if (std::strcmp(argv[0], "set") == 0) {
             if (argc < 3) {
-                Serial.println("  usage: set <key> <value>");
+                DBG.println("  usage: set <key> <value>");
                 continue;
             }
 
             if (!ops->set) {
-                Serial.println("  (keine Set-Funktion)");
+                DBG.println("  (keine Set-Funktion)");
                 continue;
             }
 
             // Passwort-Maskierung beim Echo
             if (isPasswordKey(argv[1])) {
-                Serial.printf("  %s = ********\n", argv[1]);
+                DBG.printf("  %s = ********\n", argv[1]);
             } else {
-                Serial.printf("  %s = %s\n", argv[1], argv[2]);
+                DBG.printf("  %s = %s\n", argv[1], argv[2]);
             }
 
             if (ops->set(argv[1], argv[2])) {
-                Serial.println("  OK");
+                DBG.println("  OK");
             } else {
-                Serial.println("  FEHLER — ungueltiger Key oder Wert");
+                DBG.println("  FEHLER — ungueltiger Key oder Wert");
             }
             continue;
         }
 
-        Serial.printf("  Unbekannt: %s\n", argv[0]);
+        DBG.printf("  Unbekannt: %s\n", argv[0]);
     }
 }
 
@@ -272,8 +273,8 @@ void configMenuShow(ConfigStream output) {
 
 void configMenuStart(void) {
     if (!opModeIsPaused()) {
-        Serial.println("Fehler: Config Menu nur im PAUSED Modus verfuegbar.");
-        Serial.println("  'mode paused' um in den PAUSED Modus zu wechseln.");
+        DBG.println("Fehler: Config Menu nur im PAUSED Modus verfuegbar.");
+        DBG.println("  'mode paused' um in den PAUSED Modus zu wechseln.");
         return;
     }
 
@@ -291,11 +292,11 @@ void configMenuStart(void) {
 
         // Timeout-Check
         if (hal_millis() > deadline) {
-            Serial.println("(Timeout)");
+            DBG.println("(Timeout)");
             break;
         }
         if (!opModeIsPaused()) {
-            Serial.println("(Modus gewechselt — Menu beendet)");
+            DBG.println("(Modus gewechselt — Menu beendet)");
             break;
         }
 
@@ -317,38 +318,38 @@ void configMenuStart(void) {
             case '6': cat_ops = configFrameworkFindCategory(CONFIG_CAT_SYSTEM);   break;
             case 's': case 'S':
                 if (configFrameworkSaveAll()) {
-                    Serial.println("Alle Konfigurationen gespeichert.");
+                    DBG.println("Alle Konfigurationen gespeichert.");
                 } else {
-                    Serial.println("FEHLER beim Speichern (Validierung fehlgeschlagen).");
+                    DBG.println("FEHLER beim Speichern (Validierung fehlgeschlagen).");
                 }
                 continue;
             case 'l': case 'L':
                 {
                     RuntimeConfig& cfg = softConfigGet();
                     nvsConfigLoad(cfg);
-                    Serial.println("Konfiguration aus NVS geladen.");
+                    DBG.println("Konfiguration aus NVS geladen.");
                 }
                 continue;
             case 'f': case 'F':
-                Serial.print("Werkseinstellungen? Alle Daten werden geloescht! (ja/nein): ");
+                DBG.print("Werkseinstellungen? Alle Daten werden geloescht! (ja/nein): ");
                 {
                     char confirm[MENU_LINE_MAX];
                     int clen = menuReadLine(confirm, sizeof(confirm), hal_millis() + 10000);
                     if (clen > 0 && (std::strcmp(confirm, "ja") == 0 || std::strcmp(confirm, "yes") == 0)) {
                         configFrameworkFactoryReset();
-                        Serial.println("NVS geloescht. Neustart empfohlen (Restart).");
-                        Serial.flush();
+                        DBG.println("NVS geloescht. Neustart empfohlen (Restart).");
+                        DBG.flush();
                         ESP.restart();
                     } else {
-                        Serial.println("Abgebrochen.");
+                        DBG.println("Abgebrochen.");
                     }
                 }
                 continue;
             case 'x': case 'X':
-                Serial.println("Menu beendet.");
+                DBG.println("Menu beendet.");
                 break;
             default:
-                Serial.printf("Unbekannt: %s\n", line);
+                DBG.printf("Unbekannt: %s\n", line);
                 continue;
         }
 

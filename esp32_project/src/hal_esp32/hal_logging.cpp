@@ -17,6 +17,7 @@
  */
 
 #include "hal/hal.h"
+#include "debug/DebugConsole.h"
 
 #include <Arduino.h>
 #include <freertos/FreeRTOS.h>
@@ -96,14 +97,15 @@ void hal_log(const char* fmt, ...) {
         }
     }
 
-    // Protect Serial (USB CDC) from concurrent access across cores.
+    // Protect output from concurrent access across cores.
+    // DBG.write() fans out to Serial + TCP; the mutex protects both.
     if (s_log_mutex) {
         xSemaphoreTake(s_log_mutex, portMAX_DELAY);
     }
     if (detail[0] != '\0') {
-        Serial.printf("[%s] [%10lu] %s: %s\n", category, millis(), detail, body);
+        DBG.printf("[%s] [%10lu] %s: %s\n", category, millis(), detail, body);
     } else {
-        Serial.printf("[%s] [%10lu] %s\n", category, millis(), body);
+        DBG.printf("[%s] [%10lu] %s\n", category, millis(), body);
     }
     if (s_log_mutex) {
         xSemaphoreGive(s_log_mutex);

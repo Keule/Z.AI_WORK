@@ -28,6 +28,7 @@
 #include "fw_config.h"
 #include "logic/log_config.h"
 #include "logic/log_ext.h"
+#include "debug/DebugConsole.h"
 
 #define LOG_LOCAL_LEVEL LOG_LEVEL_HAL
 #include "esp_log.h"
@@ -90,7 +91,7 @@ static void ads1118_if_debug_print(const char *const fmt, ...) {
     char buf[256];
     std::vsnprintf(buf, sizeof(buf), fmt, args);
     va_end(args);
-    Serial.print(buf);
+    DBG.print(buf);
 }
 
 // ===================================================================
@@ -191,7 +192,7 @@ static void wait_for_enter_live_adc(void) {
                 while (Serial.available()) Serial.read();
                 int16_t raw = ads1118_read_raw();
                 float voltage = raw * 4.096f / 32768.0f;
-                Serial.printf("   -> %7.3f V  (raw=%d)\n", voltage, raw);
+                DBG.printf("   -> %7.3f V  (raw=%d)\n", voltage, raw);
                 delay(50);
                 return;
             }
@@ -201,7 +202,7 @@ static void wait_for_enter_live_adc(void) {
             last_print = now;
             int16_t raw = ads1118_read_raw();
             float voltage = raw * 4.096f / 32768.0f;
-            Serial.printf("   -> %7.3f V  (raw=%d)  \r", voltage, raw);
+            DBG.printf("   -> %7.3f V  (raw=%d)  \r", voltage, raw);
         }
         delay(2);
     }
@@ -309,39 +310,39 @@ void hal_steer_angle_calibrate(void) {
     hal_log("========================================");
     hal_log("  STEERING ANGLE CALIBRATION");
     hal_log("========================================");
-    Serial.println();
-    Serial.println("=== Lenkwinkel Kalibrierung ===");
-    Serial.println();
+    DBG.println();
+    DBG.println("=== Lenkwinkel Kalibrierung ===");
+    DBG.println();
 
     // --- LEFT STOP ---
-    Serial.println("1) Lenkung ganz nach LINKS fahren (linker Anschlag)");
-    Serial.println("   ENTER druecken zum Speichern des Wertes:");
-    Serial.flush();
+    DBG.println("1) Lenkung ganz nach LINKS fahren (linker Anschlag)");
+    DBG.println("   ENTER druecken zum Speichern des Wertes:");
+    DBG.flush();
     wait_for_enter_live_adc();
 
     int16_t left_val = ads1118_read_raw_median(11, 8);
     float v_left = left_val * 4.096f / 32768.0f;
     hal_log("SteerCal: left stop  -> raw=%d, %.3f V", left_val, v_left);
-    Serial.printf("   Gespeichert: %7.3f V  (raw=%d)\n", v_left, left_val);
-    Serial.println();
+    DBG.printf("   Gespeichert: %7.3f V  (raw=%d)\n", v_left, left_val);
+    DBG.println();
 
     // --- RIGHT STOP ---
-    Serial.println("2) Lenkung ganz nach RECHTS fahren (rechter Anschlag)");
-    Serial.println("   ENTER druecken zum Speichern des Wertes:");
-    Serial.flush();
+    DBG.println("2) Lenkung ganz nach RECHTS fahren (rechter Anschlag)");
+    DBG.println("   ENTER druecken zum Speichern des Wertes:");
+    DBG.flush();
     wait_for_enter_live_adc();
 
     int16_t right_val = ads1118_read_raw_median(11, 8);
     float v_right = right_val * 4.096f / 32768.0f;
     hal_log("SteerCal: right stop -> raw=%d, %.3f V", right_val, v_right);
-    Serial.printf("   Gespeichert: %7.3f V  (raw=%d)\n", v_right, right_val);
-    Serial.println();
+    DBG.printf("   Gespeichert: %7.3f V  (raw=%d)\n", v_right, right_val);
+    DBG.println();
 
     // --- Validate ---
     if (left_val == right_val) {
         hal_log("SteerCal: ERROR — left == right (%d), no steering range!", left_val);
-        Serial.println("FEHLER: Links und Rechts sind gleich! Nochmal versuchen.");
-        Serial.println();
+        DBG.println("FEHLER: Links und Rechts sind gleich! Nochmal versuchen.");
+        DBG.println();
         return;
     }
 
@@ -351,7 +352,7 @@ void hal_steer_angle_calibrate(void) {
         left_val = right_val;
         right_val = tmp;
         hal_log("SteerCal: values swapped (left > right), poti wiring reversed");
-        Serial.println("   Hinweis: Poti polaritaet automatisch korrigiert");
+        DBG.println("   Hinweis: Poti polaritaet automatisch korrigiert");
     }
 
     s_cal_left_raw = left_val;
@@ -364,14 +365,14 @@ void hal_steer_angle_calibrate(void) {
     float voltage_left  = left_val  * 4.096f / 32768.0f;
     float voltage_right = right_val * 4.096f / 32768.0f;
 
-    Serial.println("=== Kalibrierung abgeschlossen ===");
-    Serial.printf("   Links:  raw=%6d  (%.3f V)  -> -45.0°\n", left_val, voltage_left);
-    Serial.printf("   Rechts: raw=%6d  (%.3f V)  -> +45.0°\n", right_val, voltage_right);
-    Serial.printf("   Spanne: %d LSB  (%.3f V)\n", span, voltage_right - voltage_left);
-    Serial.println();
-    Serial.println("Werte im Flash gespeichert. Kalibrierung ueberlebt Neustart.");
-    Serial.println("========================================");
-    Serial.println();
+    DBG.println("=== Kalibrierung abgeschlossen ===");
+    DBG.printf("   Links:  raw=%6d  (%.3f V)  -> -45.0°\n", left_val, voltage_left);
+    DBG.printf("   Rechts: raw=%6d  (%.3f V)  -> +45.0°\n", right_val, voltage_right);
+    DBG.printf("   Spanne: %d LSB  (%.3f V)\n", span, voltage_right - voltage_left);
+    DBG.println();
+    DBG.println("Werte im Flash gespeichert. Kalibrierung ueberlebt Neustart.");
+    DBG.println("========================================");
+    DBG.println();
 }
 
 float hal_steer_angle_read_deg(void) {

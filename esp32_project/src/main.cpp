@@ -15,6 +15,7 @@
  * Boot sequence (ADR-MODULE-002 refactoring):
  *   bootInitHal()          — NVS, HAL, firmware version
  *   bootInitModules()      — moduleSysInit, moduleSysBootActivate, SD OTA check
+ *   bootInitDebugConsole() — DebugConsole TCP/Telnet server (early, after ETH init)
  *   bootInitConfig()       — Config framework, soft config, NVS check
  *   bootInitCommunication()— CLI, NTRIP, UM980 setup
  *   bootEnterMode()        — OpMode decision (CONFIG/WORK), safety check
@@ -59,6 +60,7 @@
 #include "logic/config_pid.h"
 #include "logic/config_actuator.h"
 #include "logic/config_menu.h"
+#include "debug/DebugConsole.h"
 
 #include "logic/log_config.h"
 #undef LOG_LOCAL_LEVEL          // Arduino.h already defined it via esp_log.h
@@ -105,6 +107,9 @@ static bool s_boot_eth_url_logged = false;
 static BluetoothSerial s_boot_bt_serial;
 static bool s_boot_bt_active = false;
 #endif
+
+// Forward declarations (defined in loop section, used by TCP input callback)
+static uint32_t s_cli_last_rx_ms = 0;
 
 // ===================================================================
 // Shared boot state (valid during setup() only)
@@ -160,71 +165,72 @@ static void formatIpU32(uint32_t ip, char* out, size_t out_sz) {
 // ===================================================================
 
 static void bootMaintRunCliSession(void) {
-    Serial.println();
-    Serial.println("=== Boot CLI ===");
-    Serial.println("System init complete. Type commands now.");
-    Serial.println("Type 'boot' or 'exit' to continue startup.");
+    DBG.println();
+    DBG.println("=== Boot CLI ===");
+    DBG.println("System init complete. Type commands now.");
+    DBG.println("Type 'boot' or 'exit' to continue startup.");
 
     char line_buf[MAIN_BOOT_CLI_BUF_CAP];
     size_t line_len = 0;
 
     while (true) {
-        bool handled_input = false;
-        auto processInput = [&](Stream& in, Stream& out, bool mirror_to_serial, bool& consumed_any) -> bool {
-            while (in.available()) {
-                consumed_any = true;
-                const int ch = in.read();
+        // Process USB Serial input — echo goes through DBG (Serial + TCP)
+        {
+            while (Serial.available()) {
+                const int ch = Serial.read();
                 if (ch == '\r' || ch == '\n') {
-                    if (line_len == 0) {
-                        continue;
-                    }
-
+                    if (line_len == 0) continue;
                     line_buf[line_len] = '\0';
-                    out.println();
-                    if (mirror_to_serial) Serial.println();
-
+                    DBG.println();
                     if (std::strcmp(line_buf, "boot") == 0 || std::strcmp(line_buf, "exit") == 0) {
-                        out.println("Leaving Boot CLI, continuing startup...");
-                        if (mirror_to_serial) {
-                            Serial.println("Leaving Boot CLI, continuing startup...");
-                        }
-                        return true;
+                        DBG.println("Leaving Boot CLI, continuing startup...");
+                        return;
                     }
-
-                    cliSetOutput(&out);
-                    cliProcessLine(line_buf);
-                    cliSetOutput(&Serial);
+                    cliProcessLine(line_buf);  // s_cli_out is already &DBG
                     line_len = 0;
                 } else if (ch == 3) {  // Ctrl+C
                     line_len = 0;
-                    out.println("^C");
-                    if (mirror_to_serial) Serial.println("^C");
+                    DBG.println("^C");
                 } else if (ch == 8 || ch == 127) {  // Backspace / DEL
                     if (line_len > 0) {
                         line_len--;
-                        out.print("\b \b");
-                        if (mirror_to_serial) Serial.print("\b \b");
+                        DBG.print("\b \b");
                     }
                 } else if (line_len + 1 < sizeof(line_buf)) {
                     line_buf[line_len++] = static_cast<char>(ch);
-                    out.print(static_cast<char>(ch));
-                    if (mirror_to_serial) Serial.print(static_cast<char>(ch));
+                    DBG.print(static_cast<char>(ch));
                 }
             }
-            return false;
-        };
-
-        bool had_serial_input = false;
-        if (processInput(Serial, Serial, false, had_serial_input)) {
-            return;
         }
-        handled_input |= had_serial_input;
 #if MAIN_BT_SPP_AVAILABLE
-        bool had_bt_input = false;
-        if (s_boot_bt_active && processInput(s_boot_bt_serial, s_boot_bt_serial, true, had_bt_input)) {
-            return;
+        // Process BT SPP input — echo also goes through DBG (Serial + TCP)
+        if (s_boot_bt_active) {
+            while (s_boot_bt_serial.available()) {
+                const int ch = s_boot_bt_serial.read();
+                if (ch == '\r' || ch == '\n') {
+                    if (line_len == 0) continue;
+                    line_buf[line_len] = '\0';
+                    DBG.println();
+                    if (std::strcmp(line_buf, "boot") == 0 || std::strcmp(line_buf, "exit") == 0) {
+                        DBG.println("Leaving Boot CLI, continuing startup...");
+                        return;
+                    }
+                    cliProcessLine(line_buf);
+                    line_len = 0;
+                } else if (ch == 3) {
+                    line_len = 0;
+                    DBG.println("^C");
+                } else if (ch == 8 || ch == 127) {
+                    if (line_len > 0) {
+                        line_len--;
+                        DBG.print("\b \b");
+                    }
+                } else if (line_len + 1 < sizeof(line_buf)) {
+                    line_buf[line_len++] = static_cast<char>(ch);
+                    DBG.print(static_cast<char>(ch));
+                }
+            }
         }
-        handled_input |= had_bt_input;
 #endif
 
         if (s_boot_web_ota_active) {
@@ -239,7 +245,6 @@ static void bootMaintRunCliSession(void) {
         // NOTE: NTRIP tick/read/forward is handled by maintTask (sdLoggerMaintInit).
         // Do NOT call ntripTick() here — it blocks up to 5 s in hal_tcp_connect()
         // and would starve the IDLE task / trigger WDT when maintTask runs concurrently.
-        (void)handled_input;
         um980SetupConsoleTick();
         delay(10);
     }
@@ -436,6 +441,63 @@ static void bootInitModules(void) {
 }
 
 // ===================================================================
+// Boot Phase 2.5: Debug Console (TCP/Telnet Server)
+//
+// Starts the DebugConsole as early as possible after module system init
+// (which activates ETH + DHCP). The TCP server begins listening
+// immediately — once ETH gets an IP address, remote connections work.
+// DBG already writes to Serial by default (fallback when no TCP client).
+// ===================================================================
+static void bootInitDebugConsole(void) {
+    uint32_t t_phase = hal_millis();
+
+    // Debug Console: TCP/Telnet server (fan-out to Serial + TCP)
+    // DBG is already writing to Serial since construction.
+    // begin() starts the TCP server; enableTcp(true) activates it.
+    DBG.begin(23);              // TCP port 23 (telnet)
+    DBG.enableTcp(true);
+    DBG.setInputCallback([](uint8_t c) {
+        // TCP client input → same CLI processing as Serial input
+        static char s_tcp_buf[128];
+        static size_t s_tcp_len = 0;
+
+        s_cli_last_rx_ms = hal_millis();
+        if (c == '\r' || c == '\n') {
+            if (s_tcp_len > 0) {
+                s_tcp_buf[s_tcp_len] = '\0';
+                DBG.println();  // Echo newline to both consoles
+                cliProcessLine(s_tcp_buf);
+                s_tcp_len = 0;
+            }
+        } else if (c == 3) {  // Ctrl+C
+            s_tcp_len = 0;
+            DBG.println("^C");
+        } else if (c == 8 || c == 127) {  // Backspace / DEL
+            if (s_tcp_len > 0) {
+                s_tcp_len--;
+                DBG.print("\b \b");
+            }
+        } else if (s_tcp_len + 1 < sizeof(s_tcp_buf)) {
+            s_tcp_buf[s_tcp_len++] = static_cast<char>(c);
+            DBG.print(static_cast<char>(c));  // Echo to both consoles
+        }
+    });
+    // s_cli_out is already &DBG (set in cli.cpp default), so all CLI
+    // command output now automatically goes to Serial + TCP.
+    {
+        char ip_buf[20] = {0};
+        if (hal_net_is_connected()) {
+            formatIpU32(hal_net_get_ip(), ip_buf, sizeof(ip_buf));
+            hal_log("DBG: TCP console listening on %s:23 (telnet/nc)", ip_buf);
+        } else {
+            hal_log("DBG: TCP console listening on port 23 (waiting for network...)");
+        }
+    }
+
+    hal_log("BOOT: debug console init ... %lu ms", (unsigned long)(hal_millis() - t_phase));
+}
+
+// ===================================================================
 // Boot Phase 3: Configuration
 //
 // Initialisiert: Config Framework, Runtime-Config (NVS, SD),
@@ -596,9 +658,9 @@ static void bootInitControl(void) {
         if (!need_cal) {
             // Bereits kalibriert — 3s Fenster fuer Neukalibrierung
             uint32_t cal_wait_start = millis();
-            Serial.println();
-            Serial.println("Druecke 'c' + ENTER fuer Neukalibrierung (3s)...");
-            Serial.flush();
+            DBG.println();
+            DBG.println("Druecke 'c' + ENTER fuer Neukalibrierung (3s)...");
+            DBG.flush();
             while (millis() - cal_wait_start < 3000) {
                 if (Serial.available()) {
                     int c = Serial.read();
@@ -735,7 +797,7 @@ static void controlTaskFunc(void* param) {
                 float hz = (ctrl_dbg_count * 1000.0f) / (float)(freq_now - ctrl_freq_start);
                 ctrl_freq_start = freq_now;
                 ctrl_dbg_count = 0;
-                Serial.printf("[DBG-CTRL] %.1f Hz\n", hz);
+                DBG.printf("[DBG-CTRL] %.1f Hz\n", hz);
             }
         }
 
@@ -795,7 +857,7 @@ static void commTaskFunc(void* param) {
     // Wait for network to initialise (done in setup, but give time to settle)
     vTaskDelay(pdMS_TO_TICKS(2000));
 
-    Serial.println("[DBG-COMM] wait done, entering poll loop");
+    DBG.println("[DBG-COMM] wait done, entering poll loop");
 
     const TickType_t poll_interval = pdMS_TO_TICKS(10);  // 100 Hz polling
     TickType_t next_wake = xTaskGetTickCount();
@@ -819,7 +881,7 @@ static void commTaskFunc(void* param) {
                 float hz = (comm_dbg_count * 1000.0f) / (float)(freq_now - comm_freq_start);
                 comm_freq_start = freq_now;
                 comm_dbg_count = 0;
-                Serial.printf("[DBG-COMM] %.1f Hz\n", hz);
+                DBG.printf("[DBG-COMM] %.1f Hz\n", hz);
             }
         }
 
@@ -881,7 +943,7 @@ static void commTaskFunc(void* param) {
             }
         }
 
-        // Serial.println("[DBG-COMM] looped");
+        // DBG.println("[DBG-COMM] looped");
         vTaskDelayUntil(&next_wake, poll_interval);
     }
 }
@@ -897,6 +959,9 @@ void setup() {
 
     // Phase 2: Module System (ADR-MODULE-002)
     bootInitModules();
+
+    // Phase 2.5: Debug Console (TCP/Telnet server — as early as possible)
+    bootInitDebugConsole();
 
     // Phase 3: Configuration
     bootInitConfig();
@@ -920,7 +985,7 @@ void setup() {
 // Arduino loop() — Clean dispatcher
 // ===================================================================
 static uint32_t s_loop_dbg_count = 0;
-static uint32_t s_cli_last_rx_ms = 0;
+// s_cli_last_rx_ms declared above (needed by TCP input callback in bootInitCommunication)
 static constexpr uint32_t MAIN_CLI_QUIET_LOG_MS = 2000;
 
 /// Periodische Serial-Telemetrie (alle 5s, netzwerkunabhaengig)
@@ -1005,21 +1070,21 @@ static void loopCli(void) {
         if (ch == '\r' || ch == '\n') {
             if (s_cli_len > 0) {
                 s_cli_buf[s_cli_len] = '\0';
-                Serial.println();
+                DBG.println();
                 cliProcessLine(s_cli_buf);
                 s_cli_len = 0;
             }
         } else if (ch == 3) {  // Ctrl+C
             s_cli_len = 0;
-            Serial.println("^C");
+            DBG.println("^C");
         } else if (ch == 8 || ch == 127) {  // Backspace / DEL
             if (s_cli_len > 0) {
                 s_cli_len--;
-                Serial.print("\b \b");
+                DBG.print("\b \b");
             }
         } else if (s_cli_len + 1 < sizeof(s_cli_buf)) {
             s_cli_buf[s_cli_len++] = static_cast<char>(ch);
-            Serial.print(static_cast<char>(ch));
+            DBG.print(static_cast<char>(ch));
         }
     }
 }
@@ -1040,12 +1105,15 @@ static void loopDebugHeartbeat(void) {
                 (s_loop_freq_samples * 1000.0f) / (float)(freq_now_ms - s_loop_freq_start_ms);
             s_loop_freq_start_ms = freq_now_ms;
             s_loop_freq_samples = 0;
-            Serial.printf("[DBG-LOOP] %.1f Hz\n", hz);
+            DBG.printf("[DBG-LOOP] %.1f Hz\n", hz);
         }
     }
 }
 
 void loop() {
+    // Debug Console: TCP accept/input/disconnect (non-blocking)
+    DBG.loop();
+
     // Setup Wizard only in CONFIG mode
     if (modeGet() == OpMode::CONFIG && setupWizardConsumePending()) {
         setupWizardRun();
