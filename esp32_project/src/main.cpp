@@ -59,6 +59,7 @@
 #include "logic/config_pid.h"
 #include "logic/config_actuator.h"
 #include "logic/config_menu.h"
+#include "debug/DebugConsole.h"
 
 #include "logic/log_config.h"
 #undef LOG_LOCAL_LEVEL          // Arduino.h already defined it via esp_log.h
@@ -105,6 +106,9 @@ static bool s_boot_eth_url_logged = false;
 static BluetoothSerial s_boot_bt_serial;
 static bool s_boot_bt_active = false;
 #endif
+
+// Forward declarations (defined in loop section, used by TCP input callback)
+static uint32_t s_cli_last_rx_ms = 0;
 
 // ===================================================================
 // Shared boot state (valid during setup() only)
@@ -193,7 +197,7 @@ static void bootMaintRunCliSession(void) {
 
                     cliSetOutput(&out);
                     cliProcessLine(line_buf);
-                    cliSetOutput(&Serial);
+                    cliSetOutput(&DBG);
                     line_len = 0;
                 } else if (ch == 3) {  // Ctrl+C
                     line_len = 0;
@@ -485,6 +489,49 @@ static void bootInitConfig(void) {
 static void bootInitCommunication(void) {
     // Serial CLI initialisieren
     cliInit();
+
+    // Debug Console: TCP/Telnet server (fan-out to Serial + TCP)
+    // DBG is already writing to Serial since construction.
+    // begin() starts the TCP server; enableTcp(true) activates it.
+    DBG.begin(23);              // TCP port 23 (telnet)
+    DBG.enableTcp(true);
+    DBG.setInputCallback([](uint8_t c) {
+        // TCP client input → same CLI processing as Serial input
+        static char s_tcp_buf[128];
+        static size_t s_tcp_len = 0;
+
+        s_cli_last_rx_ms = hal_millis();
+        if (c == '\r' || c == '\n') {
+            if (s_tcp_len > 0) {
+                s_tcp_buf[s_tcp_len] = '\0';
+                DBG.println();  // Echo newline to both consoles
+                cliProcessLine(s_tcp_buf);
+                s_tcp_len = 0;
+            }
+        } else if (c == 3) {  // Ctrl+C
+            s_tcp_len = 0;
+            DBG.println("^C");
+        } else if (c == 8 || c == 127) {  // Backspace / DEL
+            if (s_tcp_len > 0) {
+                s_tcp_len--;
+                DBG.print("\b \b");
+            }
+        } else if (s_tcp_len + 1 < sizeof(s_tcp_buf)) {
+            s_tcp_buf[s_tcp_len++] = static_cast<char>(c);
+            DBG.print(static_cast<char>(c));  // Echo to both consoles
+        }
+    });
+    // s_cli_out is already &DBG (set in cli.cpp default), so all CLI
+    // command output now automatically goes to Serial + TCP.
+    {
+        char ip_buf[20] = {0};
+        if (hal_net_is_connected()) {
+            formatIpU32(hal_net_get_ip(), ip_buf, sizeof(ip_buf));
+            hal_log("DBG: TCP console listening on %s:23 (telnet/nc)", ip_buf);
+        } else {
+            hal_log("DBG: TCP console listening on port 23 (waiting for network...)");
+        }
+    }
 
     // NTRIP Client (conditional compile)
 #if FEAT_ENABLED(FEAT_COMPILED_NTRIP)
@@ -920,7 +967,7 @@ void setup() {
 // Arduino loop() — Clean dispatcher
 // ===================================================================
 static uint32_t s_loop_dbg_count = 0;
-static uint32_t s_cli_last_rx_ms = 0;
+// s_cli_last_rx_ms declared above (needed by TCP input callback in bootInitCommunication)
 static constexpr uint32_t MAIN_CLI_QUIET_LOG_MS = 2000;
 
 /// Periodische Serial-Telemetrie (alle 5s, netzwerkunabhaengig)
@@ -1046,6 +1093,9 @@ static void loopDebugHeartbeat(void) {
 }
 
 void loop() {
+    // Debug Console: TCP accept/input/disconnect (non-blocking)
+    DBG.loop();
+
     // Setup Wizard only in CONFIG mode
     if (modeGet() == OpMode::CONFIG && setupWizardConsumePending()) {
         setupWizardRun();

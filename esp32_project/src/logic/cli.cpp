@@ -10,6 +10,7 @@
 
 #include "log_config.h"
 #include "log_ext.h"
+#include "debug/DebugConsole.h"
 
 #include <Arduino.h>
 
@@ -19,7 +20,7 @@
 // ===================================================================
 // Output stream (shared with cmd_*.cpp files via extern)
 // ===================================================================
-Stream* s_cli_out = &Serial;
+Stream* s_cli_out = &DBG;
 
 // ===================================================================
 // Command registry
@@ -81,7 +82,7 @@ extern void cmd_gnss_register(void);
 // ===================================================================
 
 void cliSetOutput(Stream* out) {
-    s_cli_out = out ? out : &Serial;
+    s_cli_out = out ? out : &DBG;
 }
 
 void cliInit(void) {
