@@ -27,8 +27,7 @@
 #include "pgn_codec.h"
 #include "pgn_registry.h"
 
-// NOTE: op_mode.h/cpp removed (ADR-007). Paused state is in g_nav.sw.paused
-// (set by modeSet() in module_system.cpp).
+// Mode management: module_interface.h (modeGet/modeSet).
 
 #include "log_config.h"
 #define LOG_LOCAL_LEVEL LOG_LEVEL_NET

@@ -48,8 +48,7 @@
 #include "logic/sd_logger.h"
 #include "logic/global_state.h"
 
-// NOTE: op_mode.h/cpp has been removed (ADR-007). Mode is managed by module_system.cpp.
-// modeGet() / modeSet() from module_interface.h are the authoritative mode API.
+// Mode API: module_interface.h (modeGet/modeSet).
 
 #include "logic/log_config.h"
 #define LOG_LOCAL_LEVEL LOG_LEVEL_MAINT
@@ -403,8 +402,7 @@ static void maintTaskFunc(void* param) {
             LOGI("MAINT", "heartbeat (loop=%lu, core=%d)", (unsigned long)loop_count, xPortGetCoreID());
         }
 
-        // NOTE: GPIO mode-toggle (opModeGpioPoll) removed as P2 follow-up.
-        // task_slow will implement GPIO polling in a future update.
+        // GPIO mode-toggle deferred — task_slow will implement polling in a future update.
 
         // -----------------------------------------------------------------
         // 1. ETH link monitoring (every iteration = 1 s)

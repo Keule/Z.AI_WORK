@@ -180,23 +180,3 @@ bool modeSet(OpMode target);
 /// Get mode as human-readable string.
 const char* modeToString(OpMode mode);
 
-// ===================================================================
-// Legacy compatibility shims (will be removed after full migration)
-// ===================================================================
-
-/// @deprecated Use moduleSysIsActive(ModuleId::ETH) instead.
-static inline bool moduleIsActiveETH(void) { return moduleSysIsActive(ModuleId::ETH); }
-/// @deprecated Use moduleSysIsActive(ModuleId::IMU) instead.
-static inline bool moduleIsActiveIMU(void) { return moduleSysIsActive(ModuleId::IMU); }
-/// @deprecated Use moduleSysIsActive(ModuleId::WAS) instead.
-static inline bool moduleIsActiveWAS(void) { return moduleSysIsActive(ModuleId::WAS); }
-/// @deprecated Use moduleSysIsActive(ModuleId::ACTUATOR) instead.
-static inline bool moduleIsActiveACT(void) { return moduleSysIsActive(ModuleId::ACTUATOR); }
-/// @deprecated Use moduleSysIsActive(ModuleId::GNSS) instead.
-static inline bool moduleIsActiveGNSS(void) { return moduleSysIsActive(ModuleId::GNSS); }
-/// @deprecated Use moduleSysIsActive(ModuleId::NTRIP) instead.
-static inline bool moduleIsActiveNTRIP(void) { return moduleSysIsActive(ModuleId::NTRIP); }
-/// @deprecated Use moduleSysIsActive(ModuleId::SAFETY) instead.
-static inline bool moduleIsActiveSAFETY(void) { return moduleSysIsActive(ModuleId::SAFETY); }
-/// @deprecated Use moduleSysIsActive(ModuleId::LOGGING) instead.
-static inline bool moduleIsActiveLOGGING(void) { return moduleSysIsActive(ModuleId::LOGGING); }
