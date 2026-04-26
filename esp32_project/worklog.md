@@ -377,3 +377,37 @@ Stage Summary:
 - All builds pass cleanly with no warnings on migrated code
 - GitHub repo up to date with 3 new commits pushed
 - Remaining old files still in use: ntrip.h/.cpp, sd_logger.h/.cpp, op_mode.h/.cpp ( wrappers in mod_ntrip/mod_logging)
+
+---
+Task ID: 5
+Agent: Main (KI-Planer + KI-Entwickler)
+Task: Implement ADR-007 Two-Task Architecture (task_fast + task_slow)
+
+Work Log:
+- Read agents.md, all relevant ADRs (ADR-002, ADR-005, ADR-007, ADR-STATE-001, ADR-MODULE-002)
+- Read main.cpp (1143 lines), module_interface.h, platformio.ini
+- Discovered ADR-007 already existed as "proposed" status — comprehensive concept already written
+- Presented Gesamtkonzept to user, incorporating all discussion points from previous session
+- User approved ("ja, machen wir so") — proceeded to implementation
+- Switched to existing branch `task/two-task-architecture` (at same point as main)
+- Updated ADR-007 status: proposed → accepted (with Supersedes header)
+- Updated ADR-002 status: accepted → superseded by ADR-007
+- Updated ADR-005 status: accepted → superseded by ADR-007
+- Created shared_state.h with SharedSlot<T> template and SharedSlotError enum
+- Added -DTASK_FAST_HZ=100 to platformio.ini build profile
+- Rewrote main.cpp:
+  - Replaced controlTaskFunc (200 Hz) → taskFastFunc (configurable Hz, default 100 Hz)
+  - Replaced commTaskFunc + loop() → taskSlowFunc (8192 byte stack, 100 Hz poll)
+  - task_slow absorbs: HW monitoring, DBG.loop(), CLI, telemetry, WDT, setup wizard
+  - Empty loop() with WDT safety net
+  - Preserved all telemetry output, SPI timing diagnostics
+  - Maintained maintTask as sub-task (unchanged module behavior)
+- Build: SUCCESS (RAM 26.0%, Flash 45.9%)
+- Pushed to origin/task/two-task-architecture
+
+Stage Summary:
+- ADR-007 is now accepted, ADR-002 and ADR-005 superseded
+- Architecture: 2 main tasks (task_fast Core 1, task_slow Core 0) + sub-tasks + empty loop()
+- Frequency configurable via -DTASK_FAST_HZ in platformio.ini (default 100 Hz)
+- SharedSlot<T> template available for future cross-task data patterns
+- PR ready: https://github.com/Keule/Z.AI_WORK/pull/new/task/two-task-architecture

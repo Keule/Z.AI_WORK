@@ -4,10 +4,12 @@
  *
  * Target: LilyGO T-ETH-Lite-S3 (ESP32-S3-WROOM-1 + W5500 Ethernet)
  *
- * Three FreeRTOS tasks:
- *   - commTask    (Core 0): HW status monitoring, GPIO poll
- *   - maintTask   (Core 0): SD flush, NTRIP connect, ETH monitor [TASK-029]
- *   - controlTask (Core 1): 200 Hz module pipeline (input → process → output)
+ * Two FreeRTOS tasks (ADR-007):
+ *   - task_fast (Core 1): Configurable Hz module pipeline (input → process → output)
+ *   - task_slow (Core 0): HW monitoring, DBG.loop(), CLI, WDT, sub-task management
+ *
+ * Sub-tasks (Core 0, spawned by modules/task_slow):
+ *   - maintTask: SD flush, NTRIP connect/reconnect (blocking I/O)
  *
  * NOTE: Hardware init is done in setup() via hal_esp32_init_all().
  *       Tasks do NOT re-initialize anything.
@@ -20,7 +22,7 @@
  *   bootInitCommunication()— CLI, NTRIP, UM980 setup
  *   bootEnterMode()        — OpMode decision (CONFIG/WORK), safety check
  *   bootInitControl()      — Pipeline check, calibration, HW status
- *   bootStartTasks()       — Startup errors, FreeRTOS tasks
+ *   bootStartTasks()       — Startup errors, FreeRTOS tasks (task_fast + task_slow)
  */
 
 #include <Arduino.h>
@@ -79,14 +81,22 @@
 #endif
 
 // ===================================================================
-// Task handles
+// Task handles (ADR-007: two-task architecture)
 // ===================================================================
-static TaskHandle_t s_control_task_handle = nullptr;
-static TaskHandle_t s_comm_task_handle = nullptr;
+static TaskHandle_t s_task_fast_handle = nullptr;
+static TaskHandle_t s_task_slow_handle = nullptr;
 
 // Forward declarations
-static void controlTaskFunc(void* param);
-static void commTaskFunc(void* param);
+static void taskFastFunc(void* param);
+static void taskSlowFunc(void* param);
+
+// ===================================================================
+// task_fast frequency configuration (ADR-007)
+// ===================================================================
+#ifndef TASK_FAST_HZ
+#define TASK_FAST_HZ 100
+#endif
+static constexpr uint32_t TASK_FAST_INTERVAL_MS = 1000 / TASK_FAST_HZ;
 
 // ===================================================================
 // Runtime/Debug logging knobs
@@ -595,11 +605,7 @@ static void bootInitCommunication(void) {
 // Boot Phase 5: Operating Mode Decision (ADR-MODULE-002)
 //
 // Liest Safety-Pin und entscheidet: CONFIG oder WORK mode.
-// Uses the new OpMode enum (CONFIG/WORK) from module_interface.h.
-//
-// NOTE: The old op_mode.h (BOOTING/ACTIVE/PAUSED) is NOT included
-//       to avoid OpMode name conflict with module_interface.h.
-//       GPIO mode toggle via safety pin is deferred to a future update.
+// Uses the OpMode enum (CONFIG/WORK) from module_interface.h (ADR-007).
 // ===================================================================
 static void bootEnterMode(void) {
     uint32_t t_phase = hal_millis();
@@ -699,20 +705,21 @@ static void bootInitControl(void) {
 }
 
 // ===================================================================
-// Boot Phase 7: Start FreeRTOS Tasks
+// Boot Phase 7: Start FreeRTOS Tasks (ADR-007)
 //
-// Erstellt: controlTask, commTask
-// NOTE: maintTask is created by mod_logging.activate() -> sdLoggerMaintInit()
-//       if SD card is detected, or by main.cpp for NTRIP-only scenarios.
+// Erstellt: task_fast (Core 1), task_slow (Core 0)
+// NOTE: Sub-tasks (e.g. maintTask for NTRIP/SD) are created by modules
+//       or by task_slow at runtime.
 // ===================================================================
 static void bootStartTasks(void) {
     // -----------------------------------------------------------------
-    // Maintenance Task (TASK-029)
+    // Sub-task: Maintenance Task (TASK-029)
     // -----------------------------------------------------------------
     // WICHTIG (TASK-045): Der maintTask MUSS erstellt werden wenn NTRIP
     // aktiv ist, da ntripTick() blocking TCP-Connect enthaelt (5s Timeout).
     // mod_logging.activate() already calls sdLoggerMaintInit() if SD is
     // detected.  But if only NTRIP is active (no SD), we must start it here.
+    // This is a sub-task managed by task_slow (Core 0).
     // -----------------------------------------------------------------
     const bool logging_active = moduleSysIsActive(ModuleId::LOGGING);
     const auto* log_mod = moduleSysGet(ModuleId::LOGGING);
@@ -723,71 +730,71 @@ static void bootStartTasks(void) {
         // NTRIP active but no SD — maintTask needed for ntripTick()
         sdLoggerMaintInit();
     } else if (sd_detected) {
-        hal_log("Main: maintTask already started by LOGGING module");
+        hal_log("Main: maintTask already started by LOGGING module (sub-task)");
     } else {
-        hal_log("Main: maintenance task not started (LOGGING and NTRIP inactive)");
+        hal_log("Main: maintTask not started (LOGGING and NTRIP inactive)");
     }
 
     // Startup-Errors melden (UDP wenn Netz up, sonst Serial)
     hal_delay_ms(100);
     mod_network_send_startup_errors();
 
-    // Control Task auf Core 1 — runs the 200 Hz module pipeline
+    // task_fast auf Core 1 — module pipeline at configurable Hz (ADR-007)
     if ((feat::act() && feat::safety()) && s_control_pipeline_ready) {
         xTaskCreatePinnedToCore(
-            controlTaskFunc,
-            "ctrl",
+            taskFastFunc,
+            "fast",
             4096,
             nullptr,
             configMAX_PRIORITIES - 2,  // hohe Prioritaet
-            &s_control_task_handle,
+            &s_task_fast_handle,
             1   // Core 1
         );
+        hal_log("Main: task_fast created (%u Hz, Core 1)", (unsigned)TASK_FAST_HZ);
     } else {
         if (!(feat::act() && feat::safety())) {
-            hal_log("Main: control task not started (feature disabled)");
+            hal_log("Main: task_fast not started (feature disabled)");
         } else {
-            hal_log("Main: control task not started (pipeline inactive)");
+            hal_log("Main: task_fast not started (pipeline inactive)");
         }
     }
 
-    // Communication Task auf Core 0 — HW status monitoring
+    // task_slow auf Core 0 — HW monitoring, DBG.loop(), CLI, WDT (ADR-007)
     xTaskCreatePinnedToCore(
-        commTaskFunc,
-        "comm",
-        4096,
+        taskSlowFunc,
+        "slow",
+        8192,  // groesserer Stack fuer CLI/Config-Menü
         nullptr,
-        configMAX_PRIORITIES - 3,  // etwas niedrigere Prioritaet
-        &s_comm_task_handle,
+        configMAX_PRIORITIES - 4,  // mittel Prioritaet
+        &s_task_slow_handle,
         0   // Core 0
     );
-
-    hal_log("Main: tasks created, entering main loop");
+    hal_log("Main: task_slow created (Core 0)");
 }
 
 // ===================================================================
-// Control Task – runs at 200 Hz on Core 1
+// task_fast – configurable Hz module pipeline on Core 1 (ADR-007)
 //
 // Executes the unified module pipeline: input → process → output
-// Only runs when mode == WORK.
+// Only runs when mode == WORK. Never blocks.
 // ===================================================================
-static void controlTaskFunc(void* param) {
+static void taskFastFunc(void* param) {
     (void)param;
-    hal_log("Control: task started on core %d", xPortGetCoreID());
+    hal_log("task_fast: started on core %d (%u Hz)", xPortGetCoreID(), (unsigned)TASK_FAST_HZ);
 
     // Wait for network + sensors to stabilise
     vTaskDelay(pdMS_TO_TICKS(500));
 
-    const TickType_t interval = pdMS_TO_TICKS(5);  // 200 Hz = 5 ms
+    const TickType_t interval = pdMS_TO_TICKS(TASK_FAST_INTERVAL_MS);
     TickType_t next_wake = xTaskGetTickCount();
-    uint32_t ctrl_dbg_count = 0;
-    uint32_t ctrl_freq_start = hal_millis();
+    uint32_t fast_dbg_count = 0;
+    uint32_t fast_freq_start = hal_millis();
 #if FEAT_ENABLED(FEAT_COMPILED_IMU) || FEAT_ENABLED(FEAT_COMPILED_ADS) || FEAT_ENABLED(FEAT_COMPILED_ACT)
     uint32_t last_spi_tm_ms = 0;
 #endif
 
     for (;;) {
-        // ADR-MODULE-002: run module pipeline only in WORK mode
+        // ADR-007: run module pipeline only in WORK mode
         if (modeGet() == OpMode::WORK) {
             const uint32_t now_ms = hal_millis();
 
@@ -798,14 +805,14 @@ static void controlTaskFunc(void* param) {
         }
 
         if (MAIN_VERBOSE_TASK_DBG) {
-            // Heartbeat DBG every 1s (= every 200 iterations)
-            ctrl_dbg_count++;
-            if (ctrl_dbg_count % 200 == 0) {
+            // Heartbeat DBG every 1s
+            fast_dbg_count++;
+            if (fast_dbg_count >= TASK_FAST_HZ) {
                 uint32_t freq_now = hal_millis();
-                float hz = (ctrl_dbg_count * 1000.0f) / (float)(freq_now - ctrl_freq_start);
-                ctrl_freq_start = freq_now;
-                ctrl_dbg_count = 0;
-                DBG.printf("[DBG-CTRL] %.1f Hz\r\n", hz);
+                float hz = (fast_dbg_count * 1000.0f) / (float)(freq_now - fast_freq_start);
+                fast_freq_start = freq_now;
+                fast_dbg_count = 0;
+                DBG.printf("[DBG-FAST] %.1f Hz\r\n", hz);
             }
         }
 
@@ -847,56 +854,63 @@ static void controlTaskFunc(void* param) {
         }
 #endif
 
-        // Maintain fixed 200 Hz timing with minimal jitter.
+        // Maintain fixed timing with minimal jitter.
         vTaskDelayUntil(&next_wake, interval);
     }
 }
 
 // ===================================================================
-// Communication Task – runs on Core 0
+// task_slow – background services on Core 0 (ADR-007)
 //
-// HW status monitoring only. All module I/O (net, ntrip, etc.) is
-// handled by the controlTask pipeline or by the maintTask.
+// Absorbs former commTask + loop() responsibilities:
+//   - HW status monitoring (~1 Hz)
+//   - DBG.loop() for TCP console
+//   - Serial/TCP CLI polling
+//   - Setup Wizard (CONFIG mode only)
+//   - Periodic telemetry (5s)
+//   - Watchdog feed
+//   - Sub-task lifecycle management (maintTask etc.)
+//
+// May block on I/O (TCP, SD). Core 0 is exclusively for slow path.
 // ===================================================================
-static void commTaskFunc(void* param) {
+static void taskSlowFunc(void* param) {
     (void)param;
-    hal_log("Comm: task started on core %d", xPortGetCoreID());
+    hal_log("task_slow: started on core %d", xPortGetCoreID());
 
-    // Wait for network to initialise (done in setup, but give time to settle)
+    // Wait for network + modules to stabilise
     vTaskDelay(pdMS_TO_TICKS(2000));
 
-    DBG.println("[DBG-COMM] wait done, entering poll loop");
+    // --- Local state (moved from former commTaskFunc + loop()) ---
+    uint32_t slow_dbg_count = 0;
+    uint32_t slow_freq_start = hal_millis();
+    uint32_t last_hw_status_ms = 0;
+    static const uint32_t HW_STATUS_INTERVAL_MS = 1000;
+    uint32_t last_hw_err_log_ms = 0;
+    uint8_t last_hw_err_count = 0xFF;
+
+    // CLI input buffer (moved from loopCli)
+    static char s_cli_buf[128];
+    static size_t s_cli_len = 0;
 
     const TickType_t poll_interval = pdMS_TO_TICKS(10);  // 100 Hz polling
     TickType_t next_wake = xTaskGetTickCount();
 
-    // Hardware status update runs at ~1 Hz
-    static uint32_t s_last_hw_status_ms = 0;
-    static const uint32_t HW_STATUS_INTERVAL_MS = 1000;
-    uint32_t comm_dbg_count = 0;
-    uint32_t comm_freq_start = hal_millis();
-    uint32_t last_hw_err_log_ms = 0;
-    uint8_t last_hw_err_count = 0xFF;
-
     for (;;) {
-        // NO pipeline here — controlTask handles all module I/O
+        // --- Debug Console: TCP accept/input/disconnect (non-blocking) ---
+        DBG.loop();
 
-        if (MAIN_VERBOSE_TASK_DBG) {
-            // Heartbeat DBG every 5s (= every 500 iterations)
-            comm_dbg_count++;
-            if (comm_dbg_count % 500 == 0) {
-                uint32_t freq_now = hal_millis();
-                float hz = (comm_dbg_count * 1000.0f) / (float)(freq_now - comm_freq_start);
-                comm_freq_start = freq_now;
-                comm_dbg_count = 0;
-                DBG.printf("[DBG-COMM] %.1f Hz\r\n", hz);
-            }
+        // --- Setup Wizard (CONFIG mode only) ---
+        if (modeGet() == OpMode::CONFIG && setupWizardConsumePending()) {
+            setupWizardRun();
         }
 
-        // Hardware status monitoring (~1 Hz)
+        // --- Watchdog feed ---
+        esp_task_wdt_reset();
+
+        // --- Hardware status monitoring (~1 Hz) ---
         uint32_t now = hal_millis();
-        if (now - s_last_hw_status_ms >= HW_STATUS_INTERVAL_MS) {
-            s_last_hw_status_ms = now;
+        if (now - last_hw_status_ms >= HW_STATUS_INTERVAL_MS) {
+            last_hw_status_ms = now;
 
             bool safety_ok = true;
             bool steer_quality_ok = false;
@@ -915,27 +929,23 @@ static void commTaskFunc(void* param) {
             const bool steer_angle_valid =
                 dep_policy::isSteerAngleInputValid(now, steer_ts_ms, steer_quality_ok);
 
-            // Use new module system for IMU HW detection
             const bool imu_hw_detected = moduleSysIsActive(ModuleId::IMU) &&
                 moduleSysGet(ModuleId::IMU)->state.detected;
             const bool imu_data_valid =
                 imu_hw_detected && dep_policy::isImuInputValid(now, imu_ts_ms, imu_quality_ok);
-
-            // Use new module system for module active checks
-            const uint8_t err_count = hwStatusUpdate(
-                hal_net_is_connected(),                     // Ethernet connected
-                safety_ok,                                  // Safety circuit OK
-                steer_angle_valid,                          // steer angle freshness + plausibility
-                imu_hw_detected,                            // IMU hardware presence
-                moduleSysIsActive(ModuleId::NTRIP),         // NTRIP module active
-                moduleSysIsActive(ModuleId::IMU),           // IMU module active
-                moduleSysIsActive(ModuleId::WAS),           // WAS module active
-                moduleSysIsActive(ModuleId::SAFETY)         // SAFETY module active
-            );
-
             (void)imu_data_valid;
 
-            // Log only on count changes, plus occasional reminders.
+            const uint8_t err_count = hwStatusUpdate(
+                hal_net_is_connected(),
+                safety_ok,
+                steer_angle_valid,
+                imu_hw_detected,
+                moduleSysIsActive(ModuleId::NTRIP),
+                moduleSysIsActive(ModuleId::IMU),
+                moduleSysIsActive(ModuleId::WAS),
+                moduleSysIsActive(ModuleId::SAFETY)
+            );
+
             bool changed = (err_count != last_hw_err_count);
             bool reminder = (err_count > 0) &&
                             shouldLogPeriodic(now, &last_hw_err_log_ms, MAIN_HW_ERR_REMINDER_MS);
@@ -943,15 +953,123 @@ static void commTaskFunc(void* param) {
                 last_hw_err_count = err_count;
                 last_hw_err_log_ms = now;
             }
-
             if (changed) {
-                hal_log("COMM: HW error count changed -> %u", (unsigned)err_count);
+                hal_log("SLOW: HW error count -> %u", (unsigned)err_count);
             } else if (reminder) {
-                hal_log("COMM: %u HW error(s) active", (unsigned)err_count);
+                hal_log("SLOW: %u HW error(s) active", (unsigned)err_count);
             }
         }
 
-        // DBG.println("[DBG-COMM] looped");
+        // --- Periodic telemetry (5s, suppressed during CLI activity) ---
+        {
+            static uint32_t s_last_telemetry_ms = 0;
+            static constexpr uint32_t TELEMETRY_INTERVAL_MS = 5000;
+            static constexpr uint32_t CLI_QUIET_MS = 2000;
+            if (now - s_last_telemetry_ms >= TELEMETRY_INTERVAL_MS) {
+                if (now - s_cli_last_rx_ms >= CLI_QUIET_MS) {
+                    s_last_telemetry_ms = now;
+
+                    float heading_deg = 0.0f;
+                    float steer_angle_deg = 0.0f;
+                    int steer_angle_raw = 0;
+                    bool safety_ok = false;
+                    bool work_switch = false;
+                    bool steer_switch = false;
+                    float gps_speed_kmh = 0.0f;
+                    float desired_steer_angle = 0.0f;
+                    bool watchdog_triggered = false;
+                    int pid_output = 0;
+                    bool settings_received = false;
+                    float roll_deg = 0.0f;
+                    float yaw_rate_dps = 0.0f;
+                    bool imu_quality_ok = false;
+                    uint32_t imu_timestamp_ms = 0;
+
+                    {
+                        StateLock lock;
+                        heading_deg = g_nav.imu.heading_deg;
+                        steer_angle_deg = g_nav.steer.steer_angle_deg;
+                        steer_angle_raw = (int)g_nav.steer.steer_angle_raw;
+                        safety_ok = g_nav.safety.safety_ok;
+                        work_switch = g_nav.sw.work_switch;
+                        steer_switch = g_nav.sw.steer_switch;
+                        gps_speed_kmh = g_nav.sw.gps_speed_kmh;
+                        desired_steer_angle = g_nav.sw.desiredSteerAngleDeg;
+                        watchdog_triggered = g_nav.safety.watchdog_triggered;
+                        pid_output = (int)g_nav.pid.pid_output;
+                        settings_received = g_nav.pid.settings_received;
+                        roll_deg = g_nav.imu.roll_deg;
+                        yaw_rate_dps = g_nav.imu.yaw_rate_dps;
+                        imu_quality_ok = g_nav.imu.imu_quality_ok;
+                        imu_timestamp_ms = g_nav.imu.imu_timestamp_ms;
+                    }
+
+                    const uint32_t imu_age_ms =
+                        (imu_timestamp_ms == 0U) ? 0U : (uint32_t)(now - imu_timestamp_ms);
+                    hal_log("STAT: hd=%.1f st=%.1f raw=%d safety=%s work=%s steer=%s spd=%.1f wdog=%s pid=%d tgt=%.1f roll=%.2f yaw=%.2f imu_ok=%s imu_age=%lums net=%s cfg=%s mode=%s",
+                            heading_deg,
+                            steer_angle_deg,
+                            steer_angle_raw,
+                            safety_ok ? "OK" : "KICK",
+                            work_switch ? "ON" : "OFF",
+                            steer_switch ? "ON" : "OFF",
+                            gps_speed_kmh,
+                            watchdog_triggered ? "TRIG" : "OK",
+                            pid_output,
+                            desired_steer_angle,
+                            roll_deg,
+                            yaw_rate_dps,
+                            imu_quality_ok ? "Y" : "N",
+                            (unsigned long)imu_age_ms,
+                            hal_net_is_connected() ? "UP" : "DOWN",
+                            settings_received ? "Y" : "N",
+                            modeToString(modeGet()));
+                } else {
+                    s_last_telemetry_ms = now;  // suppress during CLI
+                }
+            }
+        }
+
+        // --- Serial CLI input (moved from loopCli) ---
+        while (Serial.available()) {
+            const int ch = Serial.read();
+            s_cli_last_rx_ms = hal_millis();
+            if (ch == '\r' || ch == '\n') {
+                if (s_cli_len > 0) {
+                    s_cli_buf[s_cli_len] = '\0';
+                    DBG.println();
+                    cliProcessLine(s_cli_buf);
+                    s_cli_len = 0;
+                }
+            } else if (ch == 3) {  // Ctrl+C
+                s_cli_len = 0;
+                DBG.println("^C");
+            } else if (ch == 8 || ch == 127) {  // Backspace / DEL
+                if (s_cli_len > 0) {
+                    s_cli_len--;
+                    DBG.print("\b \b");
+                }
+            } else if (s_cli_len + 1 < sizeof(s_cli_buf)) {
+                s_cli_buf[s_cli_len++] = static_cast<char>(ch);
+                DBG.print(static_cast<char>(ch));
+            }
+        }
+
+        // --- UM980 console tick ---
+        um980SetupConsoleTick();
+
+        // --- Debug heartbeat ---
+        if (MAIN_VERBOSE_TASK_DBG) {
+            slow_dbg_count++;
+            if (slow_dbg_count % 500 == 0) {
+                uint32_t freq_now = hal_millis();
+                float hz = (slow_dbg_count * 1000.0f) / (float)(freq_now - slow_freq_start);
+                slow_freq_start = freq_now;
+                slow_dbg_count = 0;
+                DBG.printf("[DBG-SLOW] %.1f Hz\r\n", hz);
+            }
+        }
+
         vTaskDelayUntil(&next_wake, poll_interval);
     }
 }
@@ -990,154 +1108,13 @@ void setup() {
 }
 
 // ===================================================================
-// Arduino loop() — Clean dispatcher
+// Arduino loop() — Empty (ADR-007)
+//
+// All runtime logic moved to task_fast (Core 1) and task_slow (Core 0).
+// loop() only feeds the WDT as safety net.
 // ===================================================================
-static uint32_t s_loop_dbg_count = 0;
-// s_cli_last_rx_ms declared above (needed by TCP input callback in bootInitCommunication)
-static constexpr uint32_t MAIN_CLI_QUIET_LOG_MS = 2000;
-
-/// Periodische Serial-Telemetrie (alle 5s, netzwerkunabhaengig)
-static void loopTelemetry(void) {
-    static uint32_t s_last_status = 0;
-    uint32_t now = hal_millis();
-    if (now - s_last_status < 5000) return;
-
-    // CLI-Aktivitaet erkannt? Telemetrie zurueckhalten.
-    if (now - s_cli_last_rx_ms < MAIN_CLI_QUIET_LOG_MS) {
-        s_last_status = now;
-        return;
-    }
-
-    s_last_status = now;
-
-    float heading_deg = 0.0f;
-    float steer_angle_deg = 0.0f;
-    int steer_angle_raw = 0;
-    bool safety_ok = false;
-    bool work_switch = false;
-    bool steer_switch = false;
-    float gps_speed_kmh = 0.0f;
-    float desired_steer_angle = 0.0f;
-    bool watchdog_triggered = false;
-    int pid_output = 0;
-    bool settings_received = false;
-    float roll_deg = 0.0f;
-    float yaw_rate_dps = 0.0f;
-    bool imu_quality_ok = false;
-    uint32_t imu_timestamp_ms = 0;
-
-    {
-        StateLock lock;
-        heading_deg = g_nav.imu.heading_deg;
-        steer_angle_deg = g_nav.steer.steer_angle_deg;
-        steer_angle_raw = (int)g_nav.steer.steer_angle_raw;
-        safety_ok = g_nav.safety.safety_ok;
-        work_switch = g_nav.sw.work_switch;
-        steer_switch = g_nav.sw.steer_switch;
-        gps_speed_kmh = g_nav.sw.gps_speed_kmh;
-        desired_steer_angle = g_nav.sw.desiredSteerAngleDeg;
-        watchdog_triggered = g_nav.safety.watchdog_triggered;
-        pid_output = (int)g_nav.pid.pid_output;
-        settings_received = g_nav.pid.settings_received;
-        roll_deg = g_nav.imu.roll_deg;
-        yaw_rate_dps = g_nav.imu.yaw_rate_dps;
-        imu_quality_ok = g_nav.imu.imu_quality_ok;
-        imu_timestamp_ms = g_nav.imu.imu_timestamp_ms;
-    }
-
-    const uint32_t imu_age_ms =
-        (imu_timestamp_ms == 0U) ? 0U : (uint32_t)(now - imu_timestamp_ms);
-    hal_log("STAT: hd=%.1f st=%.1f raw=%d safety=%s work=%s steer=%s spd=%.1f wdog=%s pid=%d tgt=%.1f roll_deg=%.2f yaw_rate_dps=%.2f imu_quality_ok=%s imu_age_ms=%lu net=%s cfg=%s mode=%s",
-            heading_deg,
-            steer_angle_deg,
-            steer_angle_raw,
-            safety_ok ? "OK" : "KICK",
-            work_switch ? "ON" : "OFF",
-            steer_switch ? "ON" : "OFF",
-            gps_speed_kmh,
-            watchdog_triggered ? "TRIG" : "OK",
-            pid_output,
-            desired_steer_angle,
-            roll_deg,
-            yaw_rate_dps,
-            imu_quality_ok ? "Y" : "N",
-            (unsigned long)imu_age_ms,
-            hal_net_is_connected() ? "UP" : "DOWN",
-            settings_received ? "Y" : "N",
-            modeToString(modeGet()));
-}
-
-/// Serial CLI Input-Verarbeitung
-static void loopCli(void) {
-    static char s_cli_buf[128];
-    static size_t s_cli_len = 0;
-
-    while (Serial.available()) {
-        const int ch = Serial.read();
-        s_cli_last_rx_ms = hal_millis();
-        if (ch == '\r' || ch == '\n') {
-            if (s_cli_len > 0) {
-                s_cli_buf[s_cli_len] = '\0';
-                DBG.println();
-                cliProcessLine(s_cli_buf);
-                s_cli_len = 0;
-            }
-        } else if (ch == 3) {  // Ctrl+C
-            s_cli_len = 0;
-            DBG.println("^C");
-        } else if (ch == 8 || ch == 127) {  // Backspace / DEL
-            if (s_cli_len > 0) {
-                s_cli_len--;
-                DBG.print("\b \b");
-            }
-        } else if (s_cli_len + 1 < sizeof(s_cli_buf)) {
-            s_cli_buf[s_cli_len++] = static_cast<char>(ch);
-            DBG.print(static_cast<char>(ch));
-        }
-    }
-}
-
-/// Debug Heartbeat (nur wenn MAIN_VERBOSE_TASK_DBG aktiv)
-static void loopDebugHeartbeat(void) {
-    if (!MAIN_VERBOSE_TASK_DBG) return;
-
-    s_loop_dbg_count++;
-    if (s_loop_dbg_count <= 5 || s_loop_dbg_count % 10 == 0) {
-        static uint32_t s_loop_freq_start_ms = 0;
-        static uint32_t s_loop_freq_samples = 0;
-        if (s_loop_freq_start_ms == 0) s_loop_freq_start_ms = hal_millis();
-        s_loop_freq_samples++;
-        if (s_loop_freq_samples >= 10) {
-            const uint32_t freq_now_ms = hal_millis();
-            const float hz =
-                (s_loop_freq_samples * 1000.0f) / (float)(freq_now_ms - s_loop_freq_start_ms);
-            s_loop_freq_start_ms = freq_now_ms;
-            s_loop_freq_samples = 0;
-            DBG.printf("[DBG-LOOP] %.1f Hz\r\n", hz);
-        }
-    }
-}
-
 void loop() {
-    // Debug Console: TCP accept/input/disconnect (non-blocking)
-    DBG.loop();
-
-    // Setup Wizard only in CONFIG mode
-    if (modeGet() == OpMode::CONFIG && setupWizardConsumePending()) {
-        setupWizardRun();
-    }
-
-    // Watchdog fuettern
+    // Safety net: WDT feed in case task_slow hasn't started yet
     esp_task_wdt_reset();
-
-    // Periodische Telemetrie (5s Interval)
-    loopTelemetry();
-
-    // Debug Heartbeat
-    loopDebugHeartbeat();
-
-    // Serial CLI
-    loopCli();
-
-    vTaskDelay(pdMS_TO_TICKS(100));
+    vTaskDelay(pdMS_TO_TICKS(1000));
 }

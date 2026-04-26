@@ -48,11 +48,8 @@
 #include "logic/sd_logger.h"
 #include "logic/global_state.h"
 
-// Forward declarations from op_mode.h — avoid including op_mode.h directly
-// because it defines typedef enum OpMode which conflicts with module_interface.h's enum class OpMode
-extern "C" void opModeGpioPoll(void);
-extern "C" bool opModeIsPaused(void);
-extern "C" bool opModeIsControlActive(void);
+// NOTE: op_mode.h/cpp has been removed (ADR-007). Mode is managed by module_system.cpp.
+// modeGet() / modeSet() from module_interface.h are the authoritative mode API.
 
 #include "logic/log_config.h"
 #define LOG_LOCAL_LEVEL LOG_LEVEL_MAINT
@@ -406,8 +403,8 @@ static void maintTaskFunc(void* param) {
             LOGI("MAINT", "heartbeat (loop=%lu, core=%d)", (unsigned long)loop_count, xPortGetCoreID());
         }
 
-        // ADR-005: GPIO-Poll fuer Modus-Switch
-        opModeGpioPoll();
+        // NOTE: GPIO mode-toggle (opModeGpioPoll) removed as P2 follow-up.
+        // task_slow will implement GPIO polling in a future update.
 
         // -----------------------------------------------------------------
         // 1. ETH link monitoring (every iteration = 1 s)
@@ -420,10 +417,10 @@ static void maintTaskFunc(void* param) {
         //     since maintTask runs on Core 1 — IDLE0 (Core 0) is unaffected.
         // -----------------------------------------------------------------
 #if FEAT_ENABLED(FEAT_COMPILED_NTRIP)
-        if (!opModeIsControlActive()) {
-            // BOOTING or PAUSED — do not attempt NTRIP connections.
+        if (modeGet() != OpMode::WORK) {
+            // CONFIG mode — do not attempt NTRIP connections.
             if (hal_tcp_connected()) {
-                LOGI("MAINT", "NTRIP disconnect (control not active)");
+                LOGI("MAINT", "NTRIP disconnect (not in WORK mode)");
                 hal_tcp_disconnect();
             }
         } else {

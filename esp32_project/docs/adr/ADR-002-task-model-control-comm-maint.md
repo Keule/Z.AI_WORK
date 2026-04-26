@@ -1,6 +1,6 @@
 # ADR-002: Taskmodell mit controlTask, commTask und maintTask
 
-- Status: accepted
+- Status: superseded by ADR-007
 - Datum: 2026-04-20
 
 ## Kontext

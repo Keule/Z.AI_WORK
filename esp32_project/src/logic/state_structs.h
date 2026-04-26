@@ -66,11 +66,11 @@ struct SteerState {
     bool     steer_angle_quality_ok   = false;
 };
 
-// --- Switch / Input State (Writer: net.cpp via PGN 254; paused via op_mode.cpp) ---
+// --- Switch / Input State (Writer: net.cpp via PGN 254; paused via module_system.cpp modeSet()) ---
 struct SwitchState {
     bool     work_switch              = false;
     bool     steer_switch             = false;
-    bool     paused                   = false;   // ADR-005: PAUSED-Modus (wird von op_mode gesetzt)
+    bool     paused                   = false;   // ADR-007: CONFIG-Modus (wird von modeSet() gesetzt)
     uint8_t  last_status_byte         = 0;
     float    gps_speed_kmh            = 0.0f;
     uint32_t watchdog_timer_ms        = 0;

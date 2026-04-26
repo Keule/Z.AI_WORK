@@ -26,7 +26,7 @@
 #include "config_ntrip.h"
 #include "config_gnss.h"
 #include "config_system.h"
-#include "op_mode.h"
+#include "module_interface.h"
 #include "runtime_config.h"
 #include "nvs_config.h"
 #include "hal/hal.h"
@@ -75,8 +75,8 @@ static int menuReadLine(char* buf, size_t buf_size, uint32_t deadline_ms) {
             return -1;
         }
 
-        // Modus-Check: Wenn nicht mehr PAUSED, abbrechen
-        if (!opModeIsPaused()) {
+        // Modus-Check: Wenn nicht mehr CONFIG, abbrechen
+        if (modeGet() != OpMode::CONFIG) {
             DBG.println();
             DBG.println("(Modus gewechselt — Menu beendet)");
             return -1;
@@ -138,7 +138,7 @@ static void menuPrintMain(void) {
     DBG.println();
     DBG.println("╔══════════════════════════════════════════╗");
     DBG.println("║     AgSteer Konfigurations-Menu          ║");
-    DBG.println("║     (PAUSED Modus)                       ║");
+    DBG.println("║     (CONFIG Modus)                      ║");
     DBG.println("╠══════════════════════════════════════════╣");
     DBG.println("║ 1 — Netzwerk                            ║");
     DBG.println("║ 2 — NTRIP                               ║");
@@ -174,7 +174,7 @@ static void menuCategory(const ConfigCategoryOps* ops) {
             DBG.println("(Timeout)");
             return;
         }
-        if (!opModeIsPaused()) {
+        if (modeGet() != OpMode::CONFIG) {
             DBG.println("(Modus gewechselt)");
             return;
         }
@@ -252,14 +252,14 @@ void configMenuShow(ConfigStream output) {
     auto* out = static_cast<Stream*>(output);
     if (!out) return;
 
-    if (!opModeIsPaused()) {
-        out->println("Fehler: Config nur im PAUSED Modus verfuegbar.");
-        out->println("  'mode paused' um in den PAUSED Modus zu wechseln.");
+    if (modeGet() != OpMode::CONFIG) {
+        out->println("Fehler: Config nur im CONFIG Modus verfuegbar.");
+        out->println("  'mode config' um in den CONFIG Modus zu wechseln.");
         return;
     }
 
     out->println();
-    out->println("=== Config Menu (PAUSED Mode) ===");
+    out->println("=== Config Menu (CONFIG Mode) ===");
     configFrameworkPrintStatus(output);
     out->println();
     out->println("Befehle:");
@@ -272,9 +272,9 @@ void configMenuShow(ConfigStream output) {
 }
 
 void configMenuStart(void) {
-    if (!opModeIsPaused()) {
-        DBG.println("Fehler: Config Menu nur im PAUSED Modus verfuegbar.");
-        DBG.println("  'mode paused' um in den PAUSED Modus zu wechseln.");
+    if (modeGet() != OpMode::CONFIG) {
+        DBG.println("Fehler: Config Menu nur im CONFIG Modus verfuegbar.");
+        DBG.println("  'mode config' um in den CONFIG Modus zu wechseln.");
         return;
     }
 
@@ -295,7 +295,7 @@ void configMenuStart(void) {
             DBG.println("(Timeout)");
             break;
         }
-        if (!opModeIsPaused()) {
+        if (modeGet() != OpMode::CONFIG) {
             DBG.println("(Modus gewechselt — Menu beendet)");
             break;
         }

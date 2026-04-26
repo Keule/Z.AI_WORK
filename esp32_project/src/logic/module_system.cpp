@@ -8,6 +8,7 @@
 
 #include "module_interface.h"
 #include "hal/hal.h"
+#include "global_state.h"      // for g_nav.sw.paused (modeSet)
 #include "runtime_config.h"  // for module_boot_disabled bitmask
 
 #include "log_config.h"
@@ -335,12 +336,22 @@ bool modeSet(OpMode target) {
             return false;
         }
         s_op_mode = OpMode::WORK;
+        // Clear paused flag — used by PGN 253 switchStatus and AgIO
+        {
+            StateLock lock;
+            g_nav.sw.paused = false;
+        }
         hal_log("MODE: CONFIG -> WORK");
         return true;
     }
 
     if (target == OpMode::CONFIG) {
         s_op_mode = OpMode::CONFIG;
+        // Set paused flag — used by PGN 253 switchStatus and AgIO
+        {
+            StateLock lock;
+            g_nav.sw.paused = true;
+        }
         hal_log("MODE: WORK -> CONFIG");
         return true;
     }

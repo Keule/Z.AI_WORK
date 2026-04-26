@@ -106,3 +106,58 @@ Stage Summary:
 - `module debug SPI_SHARED` shows full telemetry (utilization, switches, deadlines)
 - Diagnostic boot paths (imu_bringup, gnss_buildup) still work via direct HAL calls
 - Boot: IMU activates first → DIRECT mode → WAS activates → SHARED mode → ACTUATOR activates
+
+---
+Task ID: 5
+Agent: Main
+Task: Gesamtkonzept 2-Task-Architecture (task_fast + task_slow)
+
+Work Log:
+- Read all relevant ADRs: ADR-007 (two-task), ADR-002 (old 3-task), ADR-005 (old mode system), ADR-STATE-001 (StateLock), ADR-MODULE-002 (module system)
+- Read current source files: main.cpp, module_system.cpp, shared_state.h, module_interface.h, op_mode.h/cpp, global_state.h, state_structs.h
+- Analyzed current state: main.cpp ALREADY implements task_fast/task_slow (ADR-007 partially done)
+- Identified key remaining issue: two competing OpMode systems (op_mode.h vs module_interface.h)
+- Wrote comprehensive Gesamtkonzept document (docs/GESAMTKONZEPT-two-task-architecture.md)
+
+Stage Summary:
+- Created: esp32_project/docs/GESAMTKONZEPT-two-task-architecture.md (14 sections)
+- Key finding: Architecture is ALREADY mostly implemented in main.cpp (task_fast/task_slow)
+- Critical cleanup needed: op_mode.h/cpp removal (superseded by module_interface.h CONFIG/WORK)
+- 4-phase implementation plan proposed:
+  - Phase 1: op_mode.h/cpp cleanup (P0)
+  - Phase 2: Sub-task lifecycle cleanup (P1)
+  - Phase 3: SharedSlot integration for NTRIP (P1)
+  - Phase 4: Follow-ups — GPIO toggle, NVS persistence (P2)
+- 5 open questions documented for discussion
+- NEXT: User reviews Gesamtkonzept, then Phase 1 implementation
+
+---
+Task ID: 6
+Agent: Main
+Task: Phase 1 — op_mode.h/cpp cleanup (ADR-007 migration)
+
+Work Log:
+- Found all references to op_mode.h/cpp: 8 source files + 2 files themselves
+- Added g_nav.sw.paused management to modeSet() in module_system.cpp:
+  - modeSet(WORK) → g_nav.sw.paused = false
+  - modeSet(CONFIG) → g_nav.sw.paused = true
+  - Both under StateLock (ADR-STATE-001)
+- Updated 6 source files to replace all op_mode API calls:
+  - cmd_system.cpp: opModeRequest(OP_MODE_ACTIVE) → modeSet(OpMode::WORK), CLI usage: "work"/"config"
+  - cmd_config.cpp: opModeIsPaused() → configFrameworkIsEditable() (which now uses modeGet())
+  - config_framework.cpp: opModeIsPaused() → modeGet() == OpMode::CONFIG
+  - config_menu.cpp: opModeIsPaused() → modeGet() != OpMode::CONFIG, all UI text PAUSED→CONFIG
+  - sd_logger_esp32.cpp: opModeGpioPoll() removed (P2 follow-up), opModeIsControlActive() → modeGet() != OpMode::WORK
+  - mod_network.cpp: opModeIsPausedStatusBit() → modeGet() == OpMode::CONFIG
+- Updated comments in state_structs.h and main.cpp
+- Deleted op_mode.h and op_mode.cpp
+- Verified: zero code references to op_mode remain (only 3 comments)
+- Build: SUCCESS, RAM: 26.0%, Flash: 45.8%
+
+Stage Summary:
+- op_mode.h/cpp completely removed — 488 lines of legacy code eliminated
+- Single authoritative OpMode system: module_interface.h (CONFIG/WORK)
+- g_nav.sw.paused automatically set by modeSet() → PGN 253 switchStatus correct
+- GPIO mode-toggle deferred as P2 follow-up (opModeGpioPoll removed)
+- NVS mode persistence deferred as P2 follow-up
+- NEXT: Phase 2 — Sub-task lifecycle cleanup (maintTask ownership)
