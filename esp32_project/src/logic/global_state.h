@@ -12,6 +12,7 @@
 #include <cstdint>
 
 #include "state_structs.h"
+#include "shared_state.h"
 
 // ---------------------------------------------------------------------------
 // Mutex abstraction – implemented in HAL
@@ -115,8 +116,25 @@ struct GnssRxState {
     uint32_t drop_count;         ///< Total bytes dropped (UART buffer full)
 };
 
-/// Maximum NTRIP RTCM buffer size (ring buffer for RTCM data).
-static constexpr size_t NTRIP_RTCM_BUF_SIZE = 2048;
+// ---------------------------------------------------------------------------
+// RTCM SharedSlot — Phase 3 (ADR-007 §2.5)
+// ---------------------------------------------------------------------------
+
+/// Maximum bytes per RTCM shared-slot chunk.
+/// Matches the TCP read buffer size — single chunk per producer cycle.
+static constexpr size_t RTCM_SLOT_SIZE = 512;
+
+/// RTCM data chunk for SharedSlot cross-task transport.
+/// Producer (task_slow / ntripReadToSlot) writes; consumer (task_fast /
+/// mod_ntrip_input) reads. Trivially copyable for safe memcpy under StateLock.
+struct RtcmChunk {
+    uint8_t  data[RTCM_SLOT_SIZE];  ///< Raw RTCM3 bytes
+    uint16_t len;                    ///< Number of valid bytes in data[]
+};
+
+/// SharedSlot for RTCM data flow: task_slow → task_fast.
+/// All accesses MUST be protected by StateLock (ADR-STATE-001).
+extern SharedSlot<RtcmChunk> g_rtcm_slot;
 
 // ---------------------------------------------------------------------------
 // Global instances — TASK-025

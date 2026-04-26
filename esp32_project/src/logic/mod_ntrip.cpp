@@ -1,9 +1,13 @@
 /**
  * @file mod_ntrip.cpp
- * @brief NTRIP client module implementation.
+ * @brief NTRIP client module implementation — Phase 3 SharedSlot.
  *
- * Migrated from ntrip.cpp. Wraps existing NTRIP state machine and
- * data flow functions into the ModuleOps2 interface.
+ * Wraps the NTRIP state machine and data flow into the ModuleOps2
+ * interface. RTCM data flows through SharedSlot<RtcmChunk> (ADR-007 §2.5):
+ *
+ *   task_slow (producer):  ntripTick() → ntripReadToSlot() → g_rtcm_slot
+ *   task_fast (consumer):  mod_ntrip_input() reads g_rtcm_slot → GNSS UART
+ *
  * Error codes: 1=connect_failed, 2=auth_failed, 3=disconnected
  */
 
@@ -108,8 +112,66 @@ static bool mod_ntrip_is_healthy(uint32_t now_ms) {
 // ===================================================================
 
 static ModuleResult mod_ntrip_input(uint32_t now_ms) {
-    // Read RTCM data from TCP stream into ring buffer
-    ntripReadRtcm();
+    // Phase 3: Read RTCM data from SharedSlot instead of TCP.
+    // Producer (task_slow / ntripReadToSlot) writes to g_rtcm_slot;
+    // consumer (task_fast / mod_ntrip_input) reads and forwards.
+    //
+    // Consumer pattern (ADR-007 §2.5):
+    //   StateLock lock;
+    //   if (slot.dirty && fresh) { copy, dirty=false; process; }
+
+    // Quick check without lock — dirty is only set true by producer
+    // and cleared by us. A stale read of false just means we skip.
+    if (!g_rtcm_slot.dirty) {
+        // Update freshness tracking even when no new data
+        {
+            StateLock lock;
+            if (g_ntrip.conn_state == NtripConnState::CONNECTED) {
+                s_state.last_update_ms = now_ms;
+                s_state.quality_ok = (g_ntrip.last_rtcm_ms > 0);
+            }
+        }
+        return MOD_OK;
+    }
+
+    // Read SharedSlot under lock — consumer pattern
+    RtcmChunk local_chunk;
+    bool had_data = false;
+    {
+        StateLock lock;
+        if (g_rtcm_slot.dirty &&
+            g_rtcm_slot.data.len > 0 &&
+            (now_ms - g_rtcm_slot.last_update_ms < FRESHNESS_TIMEOUT_MS)) {
+            local_chunk = g_rtcm_slot.data;  // copy under lock
+            g_rtcm_slot.dirty = false;       // consume
+            had_data = true;
+        } else {
+            // Stale or empty — clear dirty flag
+            g_rtcm_slot.dirty = false;
+        }
+    }
+
+    if (had_data) {
+        // Forward RTCM data to ALL GNSS receivers with rtcm_source = LOCAL.
+        // Note: SharedSlot ensures ALL receivers see the SAME data,
+        // fixing the former ring-buffer pop-first issue (ADR-NTRIP-002).
+        for (uint8_t inst = 0; inst < GNSS_RX_MAX; inst++) {
+            if (!hal_gnss_uart_is_ready(inst)) continue;
+            const size_t accepted = hal_gnss_uart_write(
+                inst, local_chunk.data, local_chunk.len);
+            if (accepted < local_chunk.len) {
+                LOGW("NTRIP", "UART%d partial write: %u/%u bytes",
+                     (unsigned)inst,
+                     (unsigned)accepted, (unsigned)local_chunk.len);
+            }
+        }
+
+        // Update forwarded statistics
+        {
+            StateLock lock;
+            g_ntrip.forwarded_bytes += local_chunk.len;
+        }
+    }
 
     // Update freshness tracking
     {
@@ -172,8 +234,8 @@ static ModuleResult mod_ntrip_process(uint32_t now_ms) {
 }
 
 static ModuleResult mod_ntrip_output(uint32_t /*now_ms*/) {
-    // Forward RTCM data from ring buffer to GNSS receivers
-    ntripForwardRtcm();
+    // Phase 3: RTCM forwarding moved to input() (SharedSlot consumer).
+    // Output is now a no-op — all GNSS forwarding happens in input().
     return MOD_OK;
 }
 

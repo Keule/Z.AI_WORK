@@ -1,9 +1,12 @@
 /**
  * @file ntrip.h
- * @brief NTRIP client declarations — TASK-025.
+ * @brief NTRIP client declarations — TASK-025, Phase 3 SharedSlot integration.
  *
- * Procedural functions for NTRIP caster connection, RTCM stream
- * reception, and forwarding to GNSS receivers.
+ * Procedural functions for NTRIP caster connection and RTCM stream
+ * reception. RTCM data flows through SharedSlot<RtcmChunk> (ADR-007 §2.5):
+ *
+ *   task_slow (producer):  ntripTick() → ntripReadToSlot() → g_rtcm_slot
+ *   task_fast (consumer):  mod_ntrip_input() reads g_rtcm_slot → GNSS UART
  *
  * All NTRIP code is gated behind FEAT_NTRIP (set via -DFEAT_NTRIP).
  * Without the flag, no NTRIP code is compiled (zero overhead).
@@ -33,16 +36,17 @@ void ntripInit(void);
 void ntripTick(void);
 
 // ===================================================================
-// NTRIP data flow
+// NTRIP data flow (Phase 3: SharedSlot-based)
 // ===================================================================
 
-/// Read available RTCM data from the NTRIP TCP stream into
-/// g_ntrip.rtcm_buf. Call from commTask input phase.
-void ntripReadRtcm(void);
-
-/// Forward buffered RTCM data to all GNSS receivers with
-/// rtcm_source = LOCAL. Call from commTask output phase.
-void ntripForwardRtcm(void);
+/// Read available RTCM data from the NTRIP TCP stream and store in
+/// g_rtcm_slot (SharedSlot<RtcmChunk>). Call from task_slow every
+/// poll cycle (~100 Hz) when NTRIP module is active.
+///
+/// Non-blocking: reads whatever is available from TCP, writes at
+/// most RTCM_SLOT_SIZE bytes into the shared slot, and sets dirty=true.
+/// If no data is available or not in CONNECTED state, returns immediately.
+void ntripReadToSlot(void);
 
 // ===================================================================
 // NTRIP configuration helpers

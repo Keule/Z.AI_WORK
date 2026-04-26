@@ -1,17 +1,22 @@
 /**
  * @file ntrip.cpp
- * @brief NTRIP client implementation — TASK-025.
+ * @brief NTRIP client implementation — TASK-025, Phase 3 SharedSlot.
  *
  * Implements the NTRIP protocol (Rev 2.0) for Single-Base casters:
  *   - TCP connection to caster with HTTP/1.0 request
  *   - Base64 Basic Authentication
- *   - RTCM data stream reading
+ *   - RTCM data stream reading via SharedSlot<RtcmChunk>
  *   - Automatic reconnect on connection loss
  *
- * Data flow:
- *   ntripReadRtcm()  : TCP -> rtcm_buf (Input phase, commTask)
- *   ntripTick()      : State machine (task_slow — TASK-029)
- *   ntripForwardRtcm(): rtcm_buf -> UART[0..N] (Output phase, commTask)
+ * Data flow (Phase 3 — ADR-007 §2.5):
+ *   task_slow: ntripTick() (state machine)
+ *   task_slow: ntripReadToSlot() → TCP → g_rtcm_slot (SharedSlot, dirty=true)
+ *   task_fast: mod_ntrip_input() reads g_rtcm_slot → GNSS UART (dirty=false)
+ *
+ * The former ring buffer (s_rtcm_ring) is replaced by SharedSlot<RtcmChunk>.
+ * Since the consumer (task_fast @ 100 Hz) is orders of magnitude faster than
+ * the producer (TCP data at ~few hundred bytes/sec), a single-slot buffer
+ * is sufficient with negligible data loss risk.
  *
  * Reference: SparkFun Example20_NTRIP_Client.ino
  * Reference: NTRIP Protocol Specification, Rev 2.0
@@ -34,11 +39,14 @@
 #include <cstdio>
 
 // ===================================================================
+// Global SharedSlot instance — defined here, declared in global_state.h
+// ===================================================================
+SharedSlot<RtcmChunk> g_rtcm_slot;
+
+// ===================================================================
 // Base64 encoding for NTRIP Basic Auth
 // ===================================================================
 // Minimal Base64 encoder (no external dependency).
-// ESP32 has a built-in base64 library but it's not available on all
-// platforms. This self-contained implementation avoids lib deps.
 
 static const char k_b64_table[] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -88,57 +96,6 @@ static size_t base64Encode(const char* input, size_t input_len,
 static constexpr size_t NTRIP_HTTP_RESP_SIZE = 512;
 static char s_http_resp[NTRIP_HTTP_RESP_SIZE];
 static size_t s_http_resp_len = 0;
-
-/// RTCM ring buffer for data between TCP read and UART forward.
-static uint8_t s_rtcm_ring[NTRIP_RTCM_BUF_SIZE];
-static size_t s_rtcm_head = 0;
-static size_t s_rtcm_tail = 0;
-static size_t s_rtcm_size = 0;
-
-/// Write to RTCM ring buffer. Returns bytes written.
-static size_t rtcmRingWrite(const uint8_t* data, size_t len) {
-    if (len == 0) return 0;
-    const size_t free_space = NTRIP_RTCM_BUF_SIZE - s_rtcm_size;
-    const size_t to_copy = (len < free_space) ? len : free_space;
-    if (to_copy == 0) return 0;
-
-    const size_t first_chunk = ((s_rtcm_head + to_copy) <= NTRIP_RTCM_BUF_SIZE)
-        ? to_copy
-        : (NTRIP_RTCM_BUF_SIZE - s_rtcm_head);
-    memcpy(&s_rtcm_ring[s_rtcm_head], data, first_chunk);
-
-    const size_t second_chunk = to_copy - first_chunk;
-    if (second_chunk > 0) {
-        memcpy(&s_rtcm_ring[0], data + first_chunk, second_chunk);
-    }
-
-    s_rtcm_head = (s_rtcm_head + to_copy) % NTRIP_RTCM_BUF_SIZE;
-    s_rtcm_size += to_copy;
-    return to_copy;
-}
-
-/// Peek at linear readable chunk from ring buffer.
-static size_t rtcmRingPeek(const uint8_t** out_ptr) {
-    if (s_rtcm_size == 0) {
-        *out_ptr = nullptr;
-        return 0;
-    }
-    *out_ptr = &s_rtcm_ring[s_rtcm_tail];
-    const size_t linear = NTRIP_RTCM_BUF_SIZE - s_rtcm_tail;
-    return (s_rtcm_size < linear) ? s_rtcm_size : linear;
-}
-
-/// Pop bytes from ring buffer tail.
-static void rtcmRingPop(size_t len) {
-    if (len >= s_rtcm_size) {
-        s_rtcm_head = 0;
-        s_rtcm_tail = 0;
-        s_rtcm_size = 0;
-        return;
-    }
-    s_rtcm_tail = (s_rtcm_tail + len) % NTRIP_RTCM_BUF_SIZE;
-    s_rtcm_size -= len;
-}
 
 /// Build the NTRIP HTTP request string.
 /// Returns total request length (excluding NUL).
@@ -259,13 +216,14 @@ static void ntripSetError(const char* error) {
 // ===================================================================
 
 void ntripInit(void) {
-    // Ring buffer is already zero-initialised (static storage).
     StateLock lock;
     g_ntrip = {
         NtripConnState::IDLE,
         0, 0, 0, 0, 0, 0, {}
     };
-    LOGI("NTRIP", "client initialised (FEATURE_ENABLED)");
+    // Reset SharedSlot to clean state
+    g_rtcm_slot = {};
+    LOGI("NTRIP", "client initialised (SharedSlot, Phase 3)");
 }
 
 void ntripSetConfig(const char* host, uint16_t port,
@@ -389,7 +347,7 @@ void ntripTick(void) {
         }
 
         // Accept response as soon as first status line is complete.
-        // Many NTRIP v1 casters answer "ICY 200 OK\\r\\n" and immediately start streaming RTCM.
+        // Many NTRIP v1 casters answer "ICY 200 OK\r\n" and immediately start streaming RTCM.
         const size_t first_line_len = findFirstLineEnd(s_http_resp, s_http_resp_len);
         if (s_http_resp_len > 0 && first_line_len > 0) {
             uint8_t http_status = 0;
@@ -401,21 +359,25 @@ void ntripTick(void) {
             }
 
             if (ok) {
-                // Preserve any payload bytes that arrived in the same TCP read.
+                // Preserve any payload bytes that arrived in the same TCP read
+                // by writing them directly into the SharedSlot.
                 size_t payload_offset = findHeaderEnd(s_http_resp, s_http_resp_len);
                 if (payload_offset == 0) {
                     payload_offset = first_line_len;
                 }
                 if (payload_offset < s_http_resp_len) {
                     const size_t payload_len = s_http_resp_len - payload_offset;
-                    const size_t written = rtcmRingWrite(
-                        reinterpret_cast<const uint8_t*>(s_http_resp + payload_offset),
-                        payload_len);
+                    const size_t copy_len = (payload_len < RTCM_SLOT_SIZE)
+                        ? payload_len : RTCM_SLOT_SIZE;
                     StateLock lock;
-                    g_ntrip.rx_bytes += static_cast<uint32_t>(written);
-                    if (written > 0) {
-                        g_ntrip.last_rtcm_ms = hal_millis();
-                    }
+                    memcpy(g_rtcm_slot.data.data,
+                           s_http_resp + payload_offset, copy_len);
+                    g_rtcm_slot.data.len = static_cast<uint16_t>(copy_len);
+                    g_rtcm_slot.last_update_ms = hal_millis();
+                    g_rtcm_slot.dirty = true;
+                    g_rtcm_slot.source_id = static_cast<uint8_t>(ModuleId::NTRIP);
+                    g_ntrip.rx_bytes += static_cast<uint32_t>(copy_len);
+                    g_ntrip.last_rtcm_ms = hal_millis();
                 }
                 ntripEnterState(NtripConnState::CONNECTED);
                 LOGI("NTRIP", "authenticated, receiving RTCM stream (HTTP %u)",
@@ -483,65 +445,39 @@ void ntripTick(void) {
     }
 }
 
-void ntripReadRtcm(void) {
-    StateLock lock;
-    if (g_ntrip.conn_state != NtripConnState::CONNECTED) return;
-    // Release lock before doing I/O.
-    // NOTE (TASK-029): conn_state is changed by ntripTick() which now
-    // runs in task_slow. A stale CONNECTED check here means one extra
-    // TCP read attempt on a potentially disconnected socket — harmless
-    // (hal_tcp_read returns 0 or -1, the while-loop breaks).
+// ===================================================================
+// SharedSlot-based RTCM data flow (Phase 3)
+// ===================================================================
 
-    // Read available data from TCP.
-    uint8_t buf[512];
-    while (true) {
-        int rd = hal_tcp_read(buf, sizeof(buf));
-        if (rd <= 0) break;
+void ntripReadToSlot(void) {
+    // Quick check: only read when connected.
+    // Under lock to see consistent state with ntripTick().
+    {
+        StateLock lock;
+        if (g_ntrip.conn_state != NtripConnState::CONNECTED) return;
+    }
 
-        // Write to ring buffer.
-        const size_t written = rtcmRingWrite(buf, static_cast<size_t>(rd));
-        if (written < static_cast<size_t>(rd)) {
-            LOGW("NTRIP", "RTCM ring overflow: dropped %u bytes",
-                 static_cast<unsigned>(static_cast<size_t>(rd) - written));
-        }
+    // Read available data from TCP (non-blocking: returns 0 if no data).
+    // Read up to RTCM_SLOT_SIZE bytes — single chunk per call.
+    uint8_t buf[RTCM_SLOT_SIZE];
+    const int rd = hal_tcp_read(buf, sizeof(buf));
+    if (rd <= 0) return;
 
-        // Update statistics.
-        StateLock lock2;
+    const size_t len = static_cast<size_t>(rd);
+    const size_t copy_len = (len < RTCM_SLOT_SIZE) ? len : RTCM_SLOT_SIZE;
+
+    // Write to SharedSlot under lock — producer pattern (ADR-007 §2.5).
+    {
+        StateLock lock;
+        memcpy(g_rtcm_slot.data.data, buf, copy_len);
+        g_rtcm_slot.data.len = static_cast<uint16_t>(copy_len);
+        g_rtcm_slot.last_update_ms = hal_millis();
+        g_rtcm_slot.dirty = true;
+        g_rtcm_slot.source_id = static_cast<uint8_t>(ModuleId::NTRIP);
+
+        // Update statistics
         g_ntrip.rx_bytes += static_cast<uint32_t>(rd);
         g_ntrip.last_rtcm_ms = hal_millis();
-    }
-}
-
-void ntripForwardRtcm(void) {
-    StateLock lock;
-    if (g_ntrip.conn_state != NtripConnState::CONNECTED) return;
-    if (s_rtcm_size == 0) return;
-    // Release lock before doing UART I/O.
-
-    // Forward to all LOCAL GNSS receivers.
-    for (uint8_t inst = 0; inst < GNSS_RX_MAX; inst++) {
-        if (!hal_gnss_uart_is_ready(inst)) continue;
-
-        // Forward from ring buffer to this receiver.
-        while (s_rtcm_size > 0) {
-            const uint8_t* chunk = nullptr;
-            const size_t chunk_len = rtcmRingPeek(&chunk);
-            if (!chunk || chunk_len == 0) break;
-
-            const size_t accepted = hal_gnss_uart_write(inst, chunk, chunk_len);
-            if (accepted == 0) break;
-            if (accepted > chunk_len) break;
-
-            rtcmRingPop(accepted);
-
-            StateLock lock2;
-            g_ntrip.forwarded_bytes += static_cast<uint32_t>(accepted);
-
-            if (accepted < chunk_len) {
-                // Partial write — stop forwarding for this cycle.
-                break;
-            }
-        }
     }
 }
 

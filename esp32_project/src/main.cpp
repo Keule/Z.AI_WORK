@@ -1133,6 +1133,13 @@ static void taskSlowFunc(void* param) {
                 }
             }
         }
+
+        // --- NTRIP RTCM read → SharedSlot (Phase 3, every poll ~100 Hz) ---
+        // Reads available TCP data into g_rtcm_slot for task_fast consumption.
+        // Non-blocking: returns immediately if no data or not connected.
+        if (modeGet() == OpMode::WORK && hal_net_is_connected()) {
+            ntripReadToSlot();
+        }
 #endif
 
         // --- SD card flush (every 2 s) ---
