@@ -1,6 +1,6 @@
 /**
  * @file diagnostics.cpp
- * @brief Erweiterte Diagnosefunktionen fuer PAUSED Modus — TASK-041/043.
+ * @brief Erweiterte Diagnosefunktionen fuer CONFIG Modus — TASK-041/043.
  *
  * Bietet:
  *   - Umfassender Selftest aller Module (ETH, IMU, ADS, ACT, SD, GNSS, NTRIP)
@@ -276,9 +276,9 @@ void diagPrintLogStats(void) {
 // ===================================================================
 
 bool diagExportLogCsv(void) {
-    // Nur im PAUSED Modus zulaessig!
+    // Nur im CONFIG Modus zulaessig!
     if (modeGet() != OpMode::CONFIG) {
-        DBG.println("Fehler: CSV Export nur im PAUSED Modus zulaessig");
+        DBG.println("Fehler: CSV Export nur im CONFIG Modus zulaessig");
         return false;
     }
 

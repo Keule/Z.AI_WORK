@@ -3,7 +3,7 @@
  * @brief Serial Config Menu System — ADR-006 (TASK-038).
  *
  * Einfaches textbasiertes Menu fuer Konfigurationsaenderungen.
- * Nur aktiv im PAUSED-Modus.
+ * Nur aktiv im CONFIG-Modus.
  *
  * Hauptmenu:
  *   1-6: Kategorie auswaehlen

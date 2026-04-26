@@ -36,5 +36,5 @@ void diagPrintLogStats(void);
 
 /// SD-Log CSV ueber Serial streamen.
 /// Gibt false zurueck wenn SD nicht verfuegbar oder keine Daten.
-/// Nur im PAUSED Modus zulaessig!
+/// Nur im CONFIG Modus zulaessig!
 bool diagExportLogCsv(void);

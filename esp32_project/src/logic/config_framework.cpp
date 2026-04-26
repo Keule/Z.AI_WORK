@@ -6,7 +6,7 @@
  * Bietet einheitliche Schnittstelle fuer Validierung, Persistierung
  * und Anzeige aller Konfigurationswerte.
  *
- * Aenderungen sind nur im PAUSED-Modus zulaessig (isEditable).
+ * Aenderungen sind nur im CONFIG-Modus zulaessig (isEditable).
  */
 
 #include "config_framework.h"
@@ -211,7 +211,7 @@ void configFrameworkShowAll(ConfigStream output) {
 
 bool configFrameworkSet(ConfigCategory cat, const char* key, const char* value) {
     if (!configFrameworkIsEditable()) {
-        LOGW(TAG, "Set abgelehnt — nicht im PAUSED Modus");
+        LOGW(TAG, "Set abgelehnt — nicht im CONFIG Modus");
         return false;
     }
     if (!key || !value) {

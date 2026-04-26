@@ -7,7 +7,7 @@
  *
  * Jede Kategorie registriert sich mit ConfigCategoryOps und kann
  * unabhaengig validiert und persistiert werden.
- * Aenderungen sind nur im PAUSED-Modus zulaessig.
+ * Aenderungen sind nur im CONFIG-Modus zulaessig.
  */
 
 #pragma once
@@ -150,7 +150,7 @@ bool configFrameworkSet(ConfigCategory cat, const char* key, const char* value);
 bool configFrameworkGet(ConfigCategory cat, const char* key, char* buf, size_t buf_size);
 
 /// Pruefen ob Konfigurationsaenderungen zulaessig sind.
-/// Nur im PAUSED-Modus ist Bearbeitung erlaubt.
+/// Nur im CONFIG-Modus ist Bearbeitung erlaubt.
 bool configFrameworkIsEditable(void);
 
 /// Status-Uebersicht auf Stream ausgeben.
