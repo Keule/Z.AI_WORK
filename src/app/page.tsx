@@ -30,14 +30,18 @@ import {
 // ─── DATA ─────────────────────────────────────────────────────────────────────
 
 const COMMITS = [
-  { hash: 'bf14d7d', message: 'Phase 3: SharedSlot NTRIP (RTCMPipeline → SharedSlot&lt;RtcmChunk&gt;)', date: '2026-06', phase: 'Phase 3' },
-  { hash: 'a3f8d21', message: 'Phase 2: Codebereinigung & Dokumentation', date: '2025-06-14', phase: 'Phase 2' },
-  { hash: 'b7e2c09', message: 'Phase 1: Finaler Merge aller Module', date: '2025-06-10', phase: 'Phase 1' },
-  { hash: 'c4d1a55', message: 'Merge PR #12: NTRIP-Client Implementierung', date: '2025-06-08', phase: 'PR' },
-  { hash: 'e9f3b77', message: 'SAFETY-Modul: Watchdog & Fault-Handler', date: '2025-06-05', phase: 'Sicherheit' },
-  { hash: '1a2b3c4', message: 'GNSS-Modul: Multi-Konstellation Support', date: '2025-06-01', phase: 'Sensor' },
-  { hash: '5d6e7f8', message: 'IMU-Integration: Kalman-Filter v2', date: '2025-05-28', phase: 'Sensor' },
-  { hash: '9a0b1c2', message: 'Steering-Kontrolle: PID-Optimierung', date: '2025-05-25', phase: 'Steuerung' },
+  { hash: '8dddc38', message: 'Dashboard: Backlog & Architektur-Tabs auf aktuellen Stand gebracht', date: '26.04.2026', phase: 'Dashboard' },
+  { hash: '3c8df0c', message: 'Phase 4: Dokumentation Cleanup — veraltete Referenzen & ADRs aufgeräumt', date: '26.04.2026', phase: 'Phase 4' },
+  { hash: '5a01654', message: 'ADR-ZAI-001: Git/GitHub Workflow-Konventionen für Z.AI Agent-Sessions', date: '26.04.2026', phase: 'Doku' },
+  { hash: 'bf14d7d', message: 'Phase 3: SharedSlot NTRIP — Cross-Task RTCM-Datenfluss via SharedSlot&lt;RtcmChunk&gt;', date: '26.04.2026', phase: 'Phase 3' },
+  { hash: 'f0cb46f', message: 'Phase 2+: maintTask entfernt, ADR-007 Zwei-Task-Modell umgesetzt', date: '26.04.2026', phase: 'Phase 2' },
+  { hash: '1c1f70e', message: 'Phase 1+2: Thread-safe OpMode + Sub-Task Lifecycle Management', date: '26.04.2026', phase: 'Phase 1' },
+  { hash: '5fe9b3b', message: 'ADR-007: Zwei-Task-Architektur (task_fast + task_slow) implementiert', date: '25.04.2026', phase: 'Architektur' },
+  { hash: 'e76fb53', message: 'REMOTE_CONSOLE: Vollständige Modul-Integration & TCP/Bluetooth Shell', date: '25.04.2026', phase: 'Modul' },
+  { hash: '67dda31', message: 'PR #2: Remote Serial — DebugConsole & Remote-Shell gemerged', date: '25.04.2026', phase: 'PR' },
+  { hash: 'db33064', message: 'Serial→DBG Migration: Vollständige Debug-Ausgabe über TCP', date: '25.04.2026', phase: 'Debug' },
+  { hash: 'a697c7e', message: 'SPI aufgeteilt: SPI + SPI_SHARED Module mit Mutex-Schutz', date: '24.04.2026', phase: 'Core' },
+  { hash: '8a8f7f5', message: 'PR #1: ETH Modul-Konfiguration & DHCP-Default gemerged', date: '24.04.2026', phase: 'PR' },
 ]
 
 type ModuleCategory = 'Core' | 'Sensor' | 'Kommunikation' | 'Sicherheit' | 'Werkzeug'
