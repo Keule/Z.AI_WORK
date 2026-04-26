@@ -10,6 +10,11 @@
 #include "hal/hal.h"
 #include "global_state.h"      // for g_nav.sw.paused (modeSet)
 #include "runtime_config.h"  // for module_boot_disabled bitmask
+#include "nvs_config.h"
+
+#if defined(ARDUINO_ARCH_ESP32)
+#include <nvs.h>
+#endif
 
 #include "log_config.h"
 #define LOG_LOCAL_LEVEL LOG_LEVEL_MOD
@@ -138,11 +143,42 @@ static bool isBootDisabled(ModuleId id) {
 }
 
 // ===================================================================
+// NVS mode persistence (Phase 3)
+// ===================================================================
+#if defined(ARDUINO_ARCH_ESP32)
+static void saveModeToNvs(OpMode mode) {
+    nvs_handle_t handle = 0;
+    if (nvs_open(nvs_keys::NS, NVS_READWRITE, &handle) == ESP_OK) {
+        nvs_set_u8(handle, nvs_keys::OP_MODE, static_cast<uint8_t>(mode));
+        nvs_commit(handle);
+        nvs_close(handle);
+    }
+}
+
+static OpMode loadModeFromNvs(void) {
+    nvs_handle_t handle = 0;
+    if (nvs_open(nvs_keys::NS, NVS_READONLY, &handle) == ESP_OK) {
+        uint8_t u8 = 0;
+        esp_err_t err = nvs_get_u8(handle, nvs_keys::OP_MODE, &u8);
+        nvs_close(handle);
+        if (err == ESP_OK && u8 <= 1) {
+            return static_cast<OpMode>(u8);
+        }
+    }
+    return OpMode::CONFIG;  // default when no NVS data
+}
+#else
+static void saveModeToNvs(OpMode) {}
+static OpMode loadModeFromNvs(void) { return OpMode::CONFIG; }
+#endif
+
+// ===================================================================
 // API Implementation
 // ===================================================================
 
 void moduleSysInit(void) {
-    s_op_mode = OpMode::CONFIG;
+    s_op_mode = loadModeFromNvs();
+    hal_log("MOD-SYS: restored mode from NVS: %s", modeToString(s_op_mode));
 
     for (size_t i = 0; i < kModuleCount; i++) {
         s_modules[i].ops = s_ops_table[i];
@@ -342,6 +378,7 @@ bool modeSet(OpMode target) {
             g_nav.sw.paused = false;
         }
         hal_log("MODE: CONFIG -> WORK");
+        saveModeToNvs(OpMode::WORK);
         return true;
     }
 
@@ -353,6 +390,7 @@ bool modeSet(OpMode target) {
             g_nav.sw.paused = true;
         }
         hal_log("MODE: WORK -> CONFIG");
+        saveModeToNvs(OpMode::CONFIG);
         return true;
     }
 

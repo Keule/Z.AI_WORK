@@ -888,6 +888,12 @@ static void taskSlowFunc(void* param) {
     uint32_t last_hw_err_log_ms = 0;
     uint8_t last_hw_err_count = 0xFF;
 
+    // GPIO mode-toggle polling (Phase 3)
+    static bool s_last_safety_for_mode = false;
+    static uint32_t s_last_safety_change_ms = 0;
+    static constexpr uint32_t MODE_TOGGLE_DEBOUNCE_MS = 500;
+    static bool s_mode_toggle_initialized = false;
+
     // CLI input buffer (moved from loopCli)
     static char s_cli_buf[128];
     static size_t s_cli_len = 0;
@@ -957,6 +963,39 @@ static void taskSlowFunc(void* param) {
                 hal_log("SLOW: HW error count -> %u", (unsigned)err_count);
             } else if (reminder) {
                 hal_log("SLOW: %u HW error(s) active", (unsigned)err_count);
+            }
+        }
+
+        // --- GPIO mode-toggle polling (Phase 3) ---
+        // Monitors the safety pin for CONFIG <-> WORK transitions.
+        // Safety LOW -> CONFIG (emergency stop / configuration).
+        // Safety HIGH -> WORK (if steer pipeline is ready).
+        {
+            const bool safety_now = hal_safety_ok();
+            
+            // Initialize on first iteration
+            if (!s_mode_toggle_initialized) {
+                s_last_safety_for_mode = safety_now;
+                s_mode_toggle_initialized = true;
+            }
+            
+            if (safety_now != s_last_safety_for_mode &&
+                (now - s_last_safety_change_ms >= MODE_TOGGLE_DEBOUNCE_MS)) {
+                s_last_safety_for_mode = safety_now;
+                s_last_safety_change_ms = now;
+                
+                if (safety_now && modeGet() == OpMode::CONFIG) {
+                    // Safety HIGH + current CONFIG -> try WORK
+                    if (modeSet(OpMode::WORK)) {
+                        hal_log("SLOW: GPIO mode-toggle -> WORK (safety HIGH)");
+                    } else {
+                        hal_log("SLOW: GPIO mode-toggle -> WORK rejected (pipeline incomplete)");
+                    }
+                } else if (!safety_now && modeGet() == OpMode::WORK) {
+                    // Safety LOW + current WORK -> CONFIG
+                    modeSet(OpMode::CONFIG);
+                    hal_log("SLOW: GPIO mode-toggle -> CONFIG (safety LOW)");
+                }
             }
         }
 

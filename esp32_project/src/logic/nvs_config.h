@@ -33,6 +33,8 @@ constexpr const char* GNSS_UART_A_ROLE = "gnss_ua_role";
 constexpr const char* GNSS_UART_B_ROLE = "gnss_ub_role";
 constexpr const char* GNSS_UART_A_BAUD = "gnss_ua_baud";
 constexpr const char* GNSS_UART_B_BAUD = "gnss_ub_baud";
+// OpMode (CONFIG=0 / WORK=1)
+constexpr const char* OP_MODE = "op_mode";
 }  // namespace nvs_keys
 
 /// Lädt alle gespeicherten Werte aus NVS in cfg.

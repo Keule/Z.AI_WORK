@@ -402,7 +402,7 @@ static void maintTaskFunc(void* param) {
             LOGI("MAINT", "heartbeat (loop=%lu, core=%d)", (unsigned long)loop_count, xPortGetCoreID());
         }
 
-        // GPIO mode-toggle deferred — task_slow will implement polling in a future update.
+        // GPIO mode-toggle: implemented in task_slow (Phase 3, main.cpp).
 
         // -----------------------------------------------------------------
         // 1. ETH link monitoring (every iteration = 1 s)
