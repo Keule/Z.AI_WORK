@@ -57,3 +57,80 @@
 3. Address GPIO 46 conflict (TASK-034)
 4. Add real-time firmware telemetry API to the web dashboard
 5. Implement ADR-STATE-001 strict state lock verification
+
+---
+
+## Session: Phase 1 Thread-Safety + Phase 2 Sub-Task Lifecycle
+
+### Task 4: Phase 1 Fix — Thread-Safety for s_op_mode
+- **Status**: ✅ COMPLETE
+- **File**: `src/logic/module_system.cpp`
+- **Changes**:
+  - Added `#include <freertos/FreeRTOS.h>` and `#include <freertos/task.h>` (line 25-26)
+  - Added `static portMUX_TYPE s_mode_mutex = portMUX_INITIALIZER_UNLOCKED;` after `s_op_mode` (line 100)
+  - Wrapped `modeGet()` body with `portENTER_CRITICAL`/`portEXIT_CRITICAL` (lines 360-362)
+  - Wrapped `modeSet()` body with spinlock: acquire on entry, release at every return point (lines 367-411)
+    - Same-mode early return: unlock before return
+    - WORK pipeline check fail: unlock before return
+    - WORK transition: write `s_op_mode`, then unlock
+    - CONFIG transition: write `s_op_mode`, then unlock
+    - Fallback return: unlock before return
+
+### Task 5: Phase 2A — Sub-Task Lifecycle API Declarations
+- **Status**: ✅ COMPLETE
+- **File**: `src/logic/sd_logger.h`
+- **Changes**:
+  - Added 4 function declarations before the `#ifdef __cplusplus` closing block (lines 131-153):
+    - `bool maintTaskIsRunning(void)` — check if maint task is running
+    - `bool maintTaskStart(void)` — start maint task with duplicate guard
+    - `bool maintTaskStop(void)` — request graceful stop with 3s timeout
+    - `void* maintTaskGetHandle(void)` — get FreeRTOS task handle for diagnostics
+
+### Task 6: Phase 2B — Lifecycle API Implementation + Duplicate Guard + Graceful Exit + ETH Dependency
+- **Status**: ✅ COMPLETE
+- **File**: `src/hal_esp32/sd_logger_esp32.cpp`
+- **Changes**:
+  1. Added `static volatile bool s_maint_exit_requested = false;` after task handle (line 96)
+  2. Added full lifecycle API implementation before `maintTaskFunc` (lines 351-434):
+     - `maintTaskIsRunning()` — checks handle non-null AND exit not requested
+     - `maintTaskStart()` — duplicate guard (checks handle), GPIO init, PSRAM alloc, `xTaskCreatePinnedToCore` with error handling, returns bool
+     - `maintTaskStop()` — sets exit flag, polls 100ms × 30 = 3s timeout, returns bool
+     - `maintTaskGetHandle()` — returns handle as `void*`
+  3. Modified `maintTaskFunc()`:
+     - Added exit check at TOP of `for(;;)` loop (before vTaskDelay) (lines 485-488)
+     - Added ETH dependency check in NTRIP section: `else if (!hal_net_is_connected())` branch disconnects TCP on ETH link down (lines 517-522)
+     - Added graceful exit cleanup after loop: close SD, disconnect NTRIP, clear handle, `vTaskDelete(nullptr)` (lines 634-660)
+  4. Replaced `sdLoggerMaintInit()` body with simple delegation to `maintTaskStart()` (lines 695-697)
+
+### Task 7: Phase 2C — task_slow owns sub-task lifecycle
+- **Status**: ✅ COMPLETE
+- **File**: `src/main.cpp`
+- **Changes**:
+  1. `bootStartTasks()` (lines 729-746):
+     - NTRIP-only path: replaced `sdLoggerMaintInit()` with `maintTaskStart()` + error log
+     - SD-detected path: added `maintTaskIsRunning()` check with fallback start
+  2. `taskSlowFunc()` GPIO mode-toggle section (lines 997-1012):
+     - After `modeSet(WORK)` succeeds: added `maintTaskStart()` (line 1002)
+     - After `modeSet(CONFIG)`: added `maintTaskStop()` (line 1011)
+
+### Task 8: Phase 2D — mod_logging uses maintTaskStart()
+- **Status**: ✅ COMPLETE
+- **File**: `src/logic/mod_logging.cpp`
+- **Changes**:
+  - Replaced `sdLoggerMaintInit()` with `maintTaskStart()` in `mod_logging_activate()` (line 86)
+  - Duplicate guard in `maintTaskStart()` prevents creating a second task
+
+### Files Modified (5 total)
+| File | Lines Changed |
+|------|--------------|
+| `src/logic/module_system.cpp` | +12/-4 (spinlock + critical sections) |
+| `src/logic/sd_logger.h` | +23 (lifecycle API declarations) |
+| `src/hal_esp32/sd_logger_esp32.cpp` | +87/-31 (lifecycle impl + exit + ETH dep) |
+| `src/main.cpp` | +12/-4 (boot + mode-toggle lifecycle) |
+| `src/logic/mod_logging.cpp` | +2/-1 (use maintTaskStart) |
+
+### Key Design Decisions
+- **Spinlock for s_op_mode**: Uses `portMUX_TYPE` (FreeRTOS spinlock) instead of mutex because `s_op_mode` is only a single byte and critical sections are very short. The `moduleSysIsActive()` calls inside `modeSet()` are outside the critical section to avoid potential deadlocks.
+- **Duplicate guard**: `maintTaskStart()` checks `s_maint_task_handle != nullptr` before creating a task. This allows multiple callers (mod_logging.activate, bootStartTasks, task_slow) to safely request task start without risking duplicate tasks.
+- **Graceful exit**: `maintTaskStop()` sets a flag and polls for the task to self-delete. The task checks the flag at the TOP of each loop iteration (before vTaskDelay), then performs cleanup (close SD, disconnect NTRIP) and calls `vTaskDelete(nullptr)`.
+- **ETH dependency**: NTRIP connections are now aborted when `hal_net_is_connected()` returns false, preventing wasteful TCP connect attempts when the Ethernet link is down.

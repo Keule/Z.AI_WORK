@@ -128,6 +128,30 @@ bool sdLoggerPsramBufferActive(void);
 /// Returns 0 if PSRAM buffer is not active.
 uint32_t sdLoggerPsramBufferCount(void);
 
+// ===================================================================
+// Sub-Task Lifecycle API (Phase 2)
+// ===================================================================
+
+/// Check if the maintenance task is currently running.
+/// Returns true if the task handle is non-null and the task has not been
+/// marked for exit.
+bool maintTaskIsRunning(void);
+
+/// Start the maintenance task (duplicate-guarded).
+/// If the task is already running, returns false without creating a second task.
+/// Returns true if a new task was successfully created.
+bool maintTaskStart(void);
+
+/// Request the maintenance task to stop gracefully.
+/// Sets the exit flag and waits up to 3 seconds for the task to self-delete.
+/// Returns true if the task stopped within the timeout, false otherwise.
+bool maintTaskStop(void);
+
+/// Get the FreeRTOS task handle for the maintenance task.
+/// Returns nullptr if the task is not running.
+/// Useful for diagnostics (eTaskGetState, vTaskList, etc.).
+void* maintTaskGetHandle(void);
+
 #ifdef __cplusplus
 }
 #endif

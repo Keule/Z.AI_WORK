@@ -92,6 +92,9 @@ static const size_t CSV_LINE_MAX = 160;
 /// FreeRTOS task handle
 static TaskHandle_t s_maint_task_handle = nullptr;
 
+/// Exit request flag — set by maintTaskStop(), checked by maintTaskFunc()
+static volatile bool s_maint_exit_requested = false;
+
 /// Current switch state (true = logging active)
 static volatile bool s_logging_active = false;
 
@@ -345,6 +348,94 @@ static void maintEthMonitor(void) {
     }
 }
 
+// Forward declaration — maintTaskFunc is defined below this section
+static void maintTaskFunc(void* param);
+
+// ===================================================================
+// Sub-Task Lifecycle API (Phase 2)
+// ===================================================================
+
+bool maintTaskIsRunning(void) {
+    return (s_maint_task_handle != nullptr && !s_maint_exit_requested);
+}
+
+bool maintTaskStart(void) {
+    // Duplicate guard — prevent creating a second maintTask
+    if (s_maint_task_handle != nullptr) {
+        LOGW("MAINT", "start skipped: task already running (handle=%p)", s_maint_task_handle);
+        return false;
+    }
+
+    s_maint_exit_requested = false;
+
+    // Configure logging switch GPIO
+    if (moduleSysIsActive(ModuleId::LOGGING)) {
+        pinMode(LOG_SWITCH_PIN, INPUT_PULLUP);
+        LOGI("MAINT", "switch on GPIO %d (active LOW)", LOG_SWITCH_PIN);
+    } else {
+        LOGW("MAINT", "LOGGING module inactive -> SD logging switch disabled");
+    }
+
+    s_logging_active = false;
+
+    // Allocate PSRAM ring buffer
+    bool psram_ok = moduleSysIsActive(ModuleId::LOGGING) ? sdLoggerPsramInit() : false;
+
+    // TASK-045: Pin to Core 1 to avoid starving IDLE0 on Core 0.
+    BaseType_t result = xTaskCreatePinnedToCore(
+        maintTaskFunc,
+        "maint",
+        8192,
+        nullptr,
+        1,              // LOWEST priority
+        &s_maint_task_handle,
+        1               // Core 1
+    );
+
+    if (result != pdPASS) {
+        LOGE("MAINT", "task creation failed (ret=%ld)", (long)result);
+        s_maint_task_handle = nullptr;
+        return false;
+    }
+
+    if (psram_ok) {
+        LOGI("MAINT", "started (PSRAM buffer, SD+NTRIP+ETH)");
+    } else if (moduleSysIsActive(ModuleId::LOGGING)) {
+        LOGI("MAINT", "started (static buffer fallback, SD+NTRIP+ETH)");
+    } else {
+        LOGI("MAINT", "started (NTRIP+ETH maintenance, SD logging disabled)");
+    }
+
+    return true;
+}
+
+bool maintTaskStop(void) {
+    if (s_maint_task_handle == nullptr) {
+        LOGW("MAINT", "stop: task not running");
+        return false;
+    }
+
+    LOGI("MAINT", "stop requested — waiting for graceful exit...");
+    s_maint_exit_requested = true;
+
+    // Wait up to 3 seconds for the task to self-delete
+    for (int i = 0; i < 30 && s_maint_task_handle != nullptr; i++) {
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+
+    if (s_maint_task_handle == nullptr) {
+        LOGI("MAINT", "stopped gracefully");
+        return true;
+    }
+
+    LOGW("MAINT", "stop: task did not exit within 3s timeout!");
+    return false;
+}
+
+void* maintTaskGetHandle(void) {
+    return static_cast<void*>(s_maint_task_handle);
+}
+
 // ===================================================================
 // Maintenance Task — TASK-029 (replaces standalone loggerTask)
 // ===================================================================
@@ -394,6 +485,11 @@ static void maintTaskFunc(void* param) {
     uint32_t loop_count = 0;
 
     for (;;) {
+        // Phase 2: Check exit request at the TOP of each iteration
+        if (s_maint_exit_requested) {
+            break;
+        }
+
         vTaskDelay(pdMS_TO_TICKS(1000));  // 1 s base interval
         loop_count++;
 
@@ -421,8 +517,13 @@ static void maintTaskFunc(void* param) {
                 LOGI("MAINT", "NTRIP disconnect (not in WORK mode)");
                 hal_tcp_disconnect();
             }
+        } else if (!hal_net_is_connected()) {
+            // Phase 2: ETH dependency — don't attempt NTRIP without network
+            if (hal_tcp_connected()) {
+                LOGW("MAINT", "NTRIP disconnect (ETH link down)");
+                hal_tcp_disconnect();
+            }
         } else {
-        
             ntripTick();
         }
 #endif
@@ -532,6 +633,34 @@ static void maintTaskFunc(void* param) {
         }
         // else: switch OFF and was_active=false -> nothing to do (idle)
     }
+
+    // ================================================================
+    // Graceful exit cleanup (Phase 2)
+    // ================================================================
+    LOGI("MAINT", "performing graceful shutdown...");
+
+    // Close SD file if logging was active
+    if (s_logging_active) {
+        LOGI("MAINT", "closing SD log file on exit");
+        s_logging_active = false;
+    }
+
+    // Disconnect NTRIP TCP if connected
+#if FEAT_ENABLED(FEAT_COMPILED_NTRIP)
+    if (hal_tcp_connected()) {
+        LOGI("MAINT", "NTRIP disconnect on exit");
+        hal_tcp_disconnect();
+    }
+#endif
+
+    // Clear the task handle (signals to maintTaskStop() that we're done)
+    s_maint_task_handle = nullptr;
+    s_maint_exit_requested = false;
+
+    LOGI("MAINT", "task exiting (self-delete)");
+
+    // Self-delete — this task must NOT return
+    vTaskDelete(nullptr);
 }
 
 // ===================================================================
@@ -567,39 +696,7 @@ void sdLoggerInit(void) {
 }
 
 void sdLoggerMaintInit(void) {
-    // TASK-029 init — PSRAM buffer + combined maintTask.
-    // Configure logging switch GPIO
-    if (moduleSysIsActive(ModuleId::LOGGING)) {  // was: MOD_SD && MOD_LOGSW
-        pinMode(LOG_SWITCH_PIN, INPUT_PULLUP);
-        LOGI("MAINT", "switch on GPIO %d (active LOW)", LOG_SWITCH_PIN);
-    } else {
-        LOGW("MAINT", "LOGGING module inactive -> SD logging switch disabled");
-    }
-
-    s_logging_active = false;
-
-    // Allocate PSRAM ring buffer
-    bool psram_ok = moduleSysIsActive(ModuleId::LOGGING) ? sdLoggerPsramInit() : false;
-
-    // TASK-045: Pin to Core 1 to avoid starving IDLE0 on Core 0.
-    // Core 0 IDLE must run to feed the Task Watchdog Timer.
-    xTaskCreatePinnedToCore(
-        maintTaskFunc,
-        "maint",
-        8192,           // 8 KB stack (larger: NTRIP + SD + ETH)
-        nullptr,
-        1,              // LOWEST priority
-        &s_maint_task_handle,
-        1               // Core 1 (was Core 0 — TASK-045 WDT fix)
-    );
-
-    if (psram_ok) {
-        LOGI("MAINT", "initialised (PSRAM buffer, SD+NTRIP+ETH)");
-    } else if (moduleSysIsActive(ModuleId::LOGGING)) {
-        LOGI("MAINT", "initialised (static buffer fallback, SD+NTRIP+ETH)");
-    } else {
-        LOGI("MAINT", "initialised (NTRIP+ETH maintenance, SD logging disabled)");
-    }
+    maintTaskStart();
 }
 
 // sdLoggerPsramBufferActive() and sdLoggerPsramBufferCount() are

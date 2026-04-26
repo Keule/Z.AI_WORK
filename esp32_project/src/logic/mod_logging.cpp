@@ -82,7 +82,8 @@ static void mod_logging_activate(void) {
 
     if (s_sd_detected) {
         // Start the maintenance task + PSRAM ring buffer.
-        sdLoggerMaintInit();
+        // Phase 2: Use maintTaskStart() — duplicate guard prevents second task.
+        maintTaskStart();
         s_state.detected = true;
         s_state.error_code = LOG_ERR_OK;
         hal_log("LOGGING: activated (SD card detected)");

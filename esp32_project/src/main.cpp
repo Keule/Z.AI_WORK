@@ -728,9 +728,19 @@ static void bootStartTasks(void) {
 
     if (!sd_detected && ntrip_active) {
         // NTRIP active but no SD — maintTask needed for ntripTick()
-        sdLoggerMaintInit();
+        // Phase 2: Use maintTaskStart() with duplicate guard
+        if (!maintTaskStart()) {
+            hal_log("Main: maintTask already running or creation failed");
+        }
     } else if (sd_detected) {
-        hal_log("Main: maintTask already started by LOGGING module (sub-task)");
+        // LOGGING module already called sdLoggerMaintInit() -> maintTaskStart()
+        // during activation. Verify it's running:
+        if (maintTaskIsRunning()) {
+            hal_log("Main: maintTask already started by LOGGING module (sub-task)");
+        } else {
+            hal_log("Main: maintTask NOT running despite LOGGING active — starting");
+            maintTaskStart();
+        }
     } else {
         hal_log("Main: maintTask not started (LOGGING and NTRIP inactive)");
     }
@@ -988,6 +998,8 @@ static void taskSlowFunc(void* param) {
                     // Safety HIGH + current CONFIG -> try WORK
                     if (modeSet(OpMode::WORK)) {
                         hal_log("SLOW: GPIO mode-toggle -> WORK (safety HIGH)");
+                        // Phase 2: Start maintTask when entering WORK mode
+                        maintTaskStart();
                     } else {
                         hal_log("SLOW: GPIO mode-toggle -> WORK rejected (pipeline incomplete)");
                     }
@@ -995,6 +1007,8 @@ static void taskSlowFunc(void* param) {
                     // Safety LOW + current WORK -> CONFIG
                     modeSet(OpMode::CONFIG);
                     hal_log("SLOW: GPIO mode-toggle -> CONFIG (safety LOW)");
+                    // Phase 2: Stop maintTask when entering CONFIG mode
+                    maintTaskStop();
                 }
             }
         }

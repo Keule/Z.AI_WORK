@@ -22,6 +22,8 @@
 #include "log_ext.h"
 
 #include <cstring>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 // ===================================================================
 // Forward declarations — all module ops tables
@@ -95,6 +97,7 @@ static constexpr uint32_t kDefaultFreshness[] = {
 // Mode management
 // ===================================================================
 static OpMode s_op_mode = OpMode::CONFIG;
+static portMUX_TYPE s_mode_mutex = portMUX_INITIALIZER_UNLOCKED;
 
 // ===================================================================
 // Helper: get human-readable module name
@@ -354,11 +357,18 @@ void moduleSysBootActivate(void) {
 // ===================================================================
 
 OpMode modeGet(void) {
-    return s_op_mode;
+    portENTER_CRITICAL(&s_mode_mutex);
+    OpMode m = s_op_mode;
+    portEXIT_CRITICAL(&s_mode_mutex);
+    return m;
 }
 
 bool modeSet(OpMode target) {
-    if (target == s_op_mode) return false;
+    portENTER_CRITICAL(&s_mode_mutex);
+    if (target == s_op_mode) {
+        portEXIT_CRITICAL(&s_mode_mutex);
+        return false;
+    }
 
     if (target == OpMode::WORK) {
         // Check steer pipeline readiness
@@ -368,10 +378,12 @@ bool modeSet(OpMode target) {
                         moduleSysIsActive(ModuleId::SAFETY) &&
                         moduleSysIsActive(ModuleId::STEER);
         if (!steer_ok) {
+            portEXIT_CRITICAL(&s_mode_mutex);
             hal_log("MODE: CONFIG -> WORK rejected: steer pipeline incomplete");
             return false;
         }
         s_op_mode = OpMode::WORK;
+        portEXIT_CRITICAL(&s_mode_mutex);
         // Clear paused flag — used by PGN 253 switchStatus and AgIO
         {
             StateLock lock;
@@ -384,6 +396,7 @@ bool modeSet(OpMode target) {
 
     if (target == OpMode::CONFIG) {
         s_op_mode = OpMode::CONFIG;
+        portEXIT_CRITICAL(&s_mode_mutex);
         // Set paused flag — used by PGN 253 switchStatus and AgIO
         {
             StateLock lock;
@@ -394,6 +407,7 @@ bool modeSet(OpMode target) {
         return true;
     }
 
+    portEXIT_CRITICAL(&s_mode_mutex);
     return false;
 }
 
