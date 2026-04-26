@@ -90,7 +90,7 @@ const CATEGORY_BORDER_COLORS: Record<ModuleCategory, string> = {
 }
 
 type TaskPriority = 'Hoch' | 'Mittel' | 'Niedrig'
-type TaskStatus = 'Erledigt' | 'Offen' | 'Geplant'
+type TaskStatus = 'Erledigt' | 'Offen' | 'In Arbeit' | 'Geplant'
 
 interface BacklogTask {
   id: string
@@ -102,28 +102,58 @@ interface BacklogTask {
 }
 
 const BACKLOG_TASKS: BacklogTask[] = [
-  { id: 'TASK-001', title: 'Watchdog-Timeout analysieren & anpassen', epic: 'EPIC-001', epicName: 'Laufzeitstabilität', priority: 'Hoch', status: 'Offen' },
-  { id: 'TASK-002', title: 'Stack-Überwachung für task_fast/task_slow', epic: 'EPIC-001', epicName: 'Laufzeitstabilität', priority: 'Hoch', status: 'Offen' },
-  { id: 'TASK-003', title: 'task_slow: WDT-Feed & System-Health (ehemals maintTask)', epic: 'EPIC-001', epicName: 'Laufzeitstabilität', priority: 'Hoch', status: 'Offen' },
-  { id: 'TASK-004', title: 'Heap-Fragmentierung unter Last testen', epic: 'EPIC-001', epicName: 'Laufzeitstabilität', priority: 'Mittel', status: 'Offen' },
-  { id: 'TASK-005', title: 'Network reconnect bei Verlust robustifizieren', epic: 'EPIC-001', epicName: 'Laufzeitstabilität', priority: 'Mittel', status: 'Offen' },
-  { id: 'TASK-010', title: 'IMU Kalman-Filter Stabilität prüfen', epic: 'EPIC-002', epicName: 'Sensor & Sicherheit', priority: 'Hoch', status: 'Offen' },
-  { id: 'TASK-011', title: 'WAS-Sensor Kalibrierung automatisieren', epic: 'EPIC-002', epicName: 'Sensor & Sicherheit', priority: 'Mittel', status: 'Geplant' },
-  { id: 'TASK-012', title: 'Safety-LED blinkende Zustandsanzeige', epic: 'EPIC-002', epicName: 'Sensor & Sicherheit', priority: 'Niedrig', status: 'Erledigt' },
-  { id: 'TASK-013', title: 'GNSS Multi-Konstellation Validierung', epic: 'EPIC-002', epicName: 'Sensor & Sicherheit', priority: 'Hoch', status: 'Erledigt' },
-  { id: 'TASK-014', title: 'Fehlerfall: Automatische Notabschaltung', epic: 'EPIC-002', epicName: 'Sensor & Sicherheit', priority: 'Hoch', status: 'Offen' },
-  { id: 'TASK-015', title: 'NTRIP Reconnect mit exponential backoff', epic: 'EPIC-002', epicName: 'Sensor & Sicherheit', priority: 'Mittel', status: 'Erledigt' },
-  { id: 'TASK-020', title: 'SPI-Bus Arbitrierung optimieren', epic: 'EPIC-003', epicName: 'Plattform & Wiederverwendung', priority: 'Mittel', status: 'Offen' },
-  { id: 'TASK-021', title: 'UART DMA für GNSS-Datenstream', epic: 'EPIC-003', epicName: 'Plattform & Wiederverwendung', priority: 'Mittel', status: 'Geplant' },
-  { id: 'TASK-022', title: 'Konfiguration persistieren (NVS)', epic: 'EPIC-003', epicName: 'Plattform & Wiederverwendung', priority: 'Hoch', status: 'Offen' },
-  { id: 'TASK-023', title: 'OTA signed firmware verification', epic: 'EPIC-003', epicName: 'Plattform & Wiederverwendung', priority: 'Hoch', status: 'Geplant' },
-  { id: 'TASK-024', title: 'Modulare HAL-Schicht definieren', epic: 'EPIC-003', epicName: 'Plattform & Wiederverwendung', priority: 'Mittel', status: 'Geplant' },
-  { id: 'TASK-025', title: 'Remote Console Telnet-Modus', epic: 'EPIC-003', epicName: 'Plattform & Wiederverwendung', priority: 'Niedrig', status: 'Geplant' },
-  { id: 'TASK-030', title: 'Section Control implementieren', epic: 'EPIC-004', epicName: 'Funktionserweiterung', priority: 'Hoch', status: 'Geplant' },
-  { id: 'TASK-031', title: 'CAN-Bus Support für Traktor-IO', epic: 'EPIC-004', epicName: 'Funktionserweiterung', priority: 'Mittel', status: 'Geplant' },
-  { id: 'TASK-032', title: 'Web-Dashboard für Echtzeitdaten', epic: 'EPIC-004', epicName: 'Funktionserweiterung', priority: 'Mittel', status: 'Geplant' },
-  { id: 'TASK-033', title: 'AB-Line kopieren/löschen API', epic: 'EPIC-004', epicName: 'Funktionserweiterung', priority: 'Niedrig', status: 'Geplant' },
-  { id: 'TASK-034', title: 'Boundary-Mapping auf SD-Karte', epic: 'EPIC-004', epicName: 'Funktionserweiterung', priority: 'Niedrig', status: 'Geplant' },
+  // ── EPIC-001: Laufzeitstabilität ──
+  { id: 'TASK-001', title: 'Boot-Log mit aktuellem Firmware-Stand validieren', epic: 'EPIC-001', epicName: 'Laufzeitstabilität', priority: 'Hoch', status: 'Offen' },
+  { id: 'TASK-002', title: 'Temporäre [DBG-*] Hz-Logs entfernen oder auf DEBUG-Level setzen', epic: 'EPIC-001', epicName: 'Laufzeitstabilität', priority: 'Hoch', status: 'Offen' },
+  { id: 'TASK-003', title: 'Empfangene Steer-Config (PGN 251) funktional anwenden', epic: 'EPIC-001', epicName: 'Laufzeitstabilität', priority: 'Hoch', status: 'Offen' },
+  { id: 'TASK-029', title: 'maintTask für blocking Ops & SD-Logging (PSRAM)', epic: 'EPIC-001', epicName: 'Laufzeitstabilität', priority: 'Hoch', status: 'Erledigt' },
+  { id: 'TASK-032', title: 'NTRIP hwStatusSetFlag() Bug beheben', epic: 'EPIC-001', epicName: 'Laufzeitstabilität', priority: 'Hoch', status: 'Erledigt' },
+  { id: 'TASK-044', title: 'Control-/Init-Pfade über Modulverfügbarkeit härten', epic: 'EPIC-001', epicName: 'Laufzeitstabilität', priority: 'Hoch', status: 'Erledigt' },
+  { id: 'TASK-045', title: 'Task-Watchdog-Reset auf ESP32 Classic analysieren & beheben', epic: 'EPIC-001', epicName: 'Laufzeitstabilität', priority: 'Hoch', status: 'Offen' },
+  { id: 'TASK-047', title: 'Two-Task Architecture (task_fast + task_slow)', epic: 'EPIC-001', epicName: 'Laufzeitstabilität', priority: 'Hoch', status: 'Offen' },
+  // ── EPIC-002: Sensor & Sicherheit ──
+  { id: 'TASK-004', title: 'BNO085-Pfad auf echter Hardware integrieren & kalibrieren', epic: 'EPIC-002', epicName: 'Sensor & Sicherheit', priority: 'Mittel', status: 'Offen' },
+  { id: 'TASK-005', title: 'Externen Hardware-Watchdog spezifizieren & integrieren', epic: 'EPIC-002', epicName: 'Sensor & Sicherheit', priority: 'Mittel', status: 'Offen' },
+  // ── EPIC-003: Plattform & Wiederverwendung ──
+  { id: 'TASK-006', title: 'PGN Codec/Types/Registry in Library extrahieren', epic: 'EPIC-003', epicName: 'Plattform & Wiederverwendung', priority: 'Mittel', status: 'Offen' },
+  { id: 'TASK-011', title: 'Automatischen PlatformIO Build-Check bei Push etablieren', epic: 'EPIC-003', epicName: 'Plattform & Wiederverwendung', priority: 'Niedrig', status: 'Offen' },
+  { id: 'TASK-012', title: 'Technische Dokumentation & Architektur konsolidieren', epic: 'EPIC-003', epicName: 'Plattform & Wiederverwendung', priority: 'Mittel', status: 'Offen' },
+  { id: 'TASK-014', title: 'README-/Prozess-/Architekturhinweise für RTCM/UM980 nachziehen', epic: 'EPIC-003', epicName: 'Plattform & Wiederverwendung', priority: 'Mittel', status: 'Offen' },
+  { id: 'TASK-021', title: 'KI-Planer: Compile-time/runtime Capabilities & Pin-Zuweisung', epic: 'EPIC-003', epicName: 'Plattform & Wiederverwendung', priority: 'Hoch', status: 'Erledigt' },
+  { id: 'TASK-022', title: 'Compile-Time-Gating für SPI/UART-Capabilities umsetzen', epic: 'EPIC-003', epicName: 'Plattform & Wiederverwendung', priority: 'Hoch', status: 'Erledigt' },
+  { id: 'TASK-023', title: 'Zusätzliche Capabilities nur bei Modulbedarf initialisieren', epic: 'EPIC-003', epicName: 'Plattform & Wiederverwendung', priority: 'Hoch', status: 'Erledigt' },
+  { id: 'TASK-024', title: 'Pin-Claims & Pin-Zuweisung verbindlich umsetzen', epic: 'EPIC-003', epicName: 'Plattform & Wiederverwendung', priority: 'Hoch', status: 'Erledigt' },
+  { id: 'TASK-026', title: 'fw_config & Board-Profile restrukturieren', epic: 'EPIC-003', epicName: 'Plattform & Wiederverwendung', priority: 'Mittel', status: 'Erledigt' },
+  { id: 'TASK-027', title: 'Modul-System mit Runtime-Aktivierung & Pin-Claims', epic: 'EPIC-003', epicName: 'Plattform & Wiederverwendung', priority: 'Hoch', status: 'Erledigt' },
+  { id: 'TASK-028', title: 'soft_config.h mit Nutzer-Defaults & RuntimeConfig', epic: 'EPIC-003', epicName: 'Plattform & Wiederverwendung', priority: 'Mittel', status: 'Erledigt' },
+  { id: 'TASK-031', title: 'Legacy HAL Pin-Claims mit MOD_*-Tags harmonisieren', epic: 'EPIC-003', epicName: 'Plattform & Wiederverwendung', priority: 'Hoch', status: 'Erledigt' },
+  { id: 'TASK-033', title: 'NTRIP-Credentials dateibasiertes Laden implementieren', epic: 'EPIC-003', epicName: 'Plattform & Wiederverwendung', priority: 'Hoch', status: 'Erledigt' },
+  { id: 'TASK-035', title: 'sd_logger_esp32.cpp Dokumentation & Prozess-Konservierung', epic: 'EPIC-003', epicName: 'Plattform & Wiederverwendung', priority: 'Niedrig', status: 'Erledigt' },
+  { id: 'TASK-036', title: 'SD-Funktionalität als Modul aktivierbar machen', epic: 'EPIC-003', epicName: 'Plattform & Wiederverwendung', priority: 'Hoch', status: 'Erledigt' },
+  { id: 'TASK-037', title: 'Basis-Task für einheitlichen Konfig-Framework-Rahmen', epic: 'EPIC-003', epicName: 'Plattform & Wiederverwendung', priority: 'Hoch', status: 'Erledigt' },
+  { id: 'TASK-038', title: 'Boot-Pfad & deterministischer Serial-Konfigmodus spezifizieren', epic: 'EPIC-003', epicName: 'Plattform & Wiederverwendung', priority: 'Hoch', status: 'Erledigt' },
+  { id: 'TASK-040', title: 'features.h aufräumen — Capabilities & Legacy-Aliase streichen', epic: 'EPIC-003', epicName: 'Plattform & Wiederverwendung', priority: 'Hoch', status: 'Erledigt' },
+  { id: 'TASK-046', title: 'Post-hoc Review & Backlog-Konservierung der Refactor-Welle', epic: 'EPIC-003', epicName: 'Plattform & Wiederverwendung', priority: 'Hoch', status: 'Offen' },
+  { id: 'TASK-034', title: 'GPIO-46 LOG_SWITCH_PIN verlegen & NTRIP-GNSS-Dependency', epic: 'EPIC-003', epicName: 'Plattform & Wiederverwendung', priority: 'Mittel', status: 'Offen' },
+  // ── EPIC-004: Funktionserweiterung ──
+  { id: 'TASK-007', title: 'Zweite ESP32-Firmware für GPS-Bridge (PGN 214)', epic: 'EPIC-004', epicName: 'Funktionserweiterung', priority: 'Niedrig', status: 'Offen' },
+  { id: 'TASK-008', title: 'PGN 182/183 für Abschnittssteuerung implementieren', epic: 'EPIC-004', epicName: 'Funktionserweiterung', priority: 'Niedrig', status: 'Offen' },
+  { id: 'TASK-009', title: 'PGN 100 (Corrected Position) für GPS-Out Geräte', epic: 'EPIC-004', epicName: 'Funktionserweiterung', priority: 'Niedrig', status: 'Offen' },
+  { id: 'TASK-010', title: 'Laufzeitfehler via PGN 221 an AgIO senden', epic: 'EPIC-004', epicName: 'Funktionserweiterung', priority: 'Niedrig', status: 'Offen' },
+  { id: 'TASK-013', title: 'RTCM-Weiterleitung AgIO → UM980 validieren', epic: 'EPIC-004', epicName: 'Funktionserweiterung', priority: 'Hoch', status: 'Offen' },
+  { id: 'TASK-014A', title: 'RTCM-Forwarding über GNSS-UART in HAL implementieren', epic: 'EPIC-004', epicName: 'Funktionserweiterung', priority: 'Mittel', status: 'Offen' },
+  { id: 'TASK-015', title: 'UDP-basierter RTCM-Empfang mit robuster Pufferung', epic: 'EPIC-004', epicName: 'Funktionserweiterung', priority: 'Mittel', status: 'Offen' },
+  { id: 'TASK-016', title: 'PGN-214 um FixQuality/Age-Integration erweitern', epic: 'EPIC-004', epicName: 'Funktionserweiterung', priority: 'Mittel', status: 'Offen' },
+  { id: 'TASK-017', title: 'RTCM-Ende-zu-Ende Validierung mit AgIO & UM980', epic: 'EPIC-004', epicName: 'Funktionserweiterung', priority: 'Mittel', status: 'Offen' },
+  { id: 'TASK-019', title: 'Integrationsplanung für zwei UM980-Module', epic: 'EPIC-004', epicName: 'Funktionserweiterung', priority: 'Hoch', status: 'In Arbeit' },
+  { id: 'TASK-019F', title: 'Dual-UM980 Failover-Logik Primär/Sekundär umsetzen', epic: 'EPIC-004', epicName: 'Funktionserweiterung', priority: 'Hoch', status: 'Offen' },
+  { id: 'TASK-019G', title: 'Labor- & Feldvalidierung für Dual-UM980', epic: 'EPIC-004', epicName: 'Funktionserweiterung', priority: 'Hoch', status: 'Offen' },
+  { id: 'TASK-025', title: 'NTRIP-Client für Single-Base-Caster implementieren', epic: 'EPIC-004', epicName: 'Funktionserweiterung', priority: 'Hoch', status: 'Erledigt' },
+  { id: 'TASK-030', title: 'NTRIP auf neues Modul-System & maintTask migrieren', epic: 'EPIC-004', epicName: 'Funktionserweiterung', priority: 'Mittel', status: 'Erledigt' },
+  { id: 'TASK-039', title: 'Ethernet-Netzwerkmodus im seriellen Konfigmodus konfigurierbar', epic: 'EPIC-004', epicName: 'Funktionserweiterung', priority: 'Hoch', status: 'Erledigt' },
+  { id: 'TASK-041', title: 'Konfigurierbare GNSS-Datenausgabe im Konfigmodus', epic: 'EPIC-004', epicName: 'Funktionserweiterung', priority: 'Hoch', status: 'Erledigt' },
+  { id: 'TASK-042', title: 'NTRIP-Konfigurationspfad funktional & sicher spezifizieren', epic: 'EPIC-004', epicName: 'Funktionserweiterung', priority: 'Hoch', status: 'Erledigt' },
+  { id: 'TASK-043', title: 'Planung: Parametrisierung beider UM980-UARTs', epic: 'EPIC-004', epicName: 'Funktionserweiterung', priority: 'Hoch', status: 'Erledigt' },
 ]
 
 const PRIORITY_ORDER: Record<TaskPriority, number> = { Hoch: 0, Mittel: 1, Niedrig: 2 }
@@ -137,6 +167,7 @@ const PRIORITY_BADGE: Record<TaskPriority, { className: string; icon: React.Reac
 const STATUS_BADGE: Record<TaskStatus, { className: string; icon: React.ReactNode }> = {
   Erledigt: { className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800', icon: <CheckCircle className="size-3" /> },
   Offen: { className: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200 dark:border-amber-800', icon: <Bug className="size-3" /> },
+  'In Arbeit': { className: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300 border-blue-200 dark:border-blue-800', icon: <Loader2 className="size-3" /> },
   Geplant: { className: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300 border-sky-200 dark:border-sky-800', icon: <ClipboardList className="size-3" /> },
 }
 
@@ -179,10 +210,10 @@ function OverviewTab() {
       {/* Quick Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'Module gesamt', value: '16', icon: <Box className="size-5" />, sub: 'Alle aktiv' },
-          { label: 'Aktive ADRs', value: '10+', icon: <FileText className="size-5" />, sub: 'Architecture Decision Records' },
-          { label: 'Backlog-Aufgaben', value: '47', icon: <ListTodo className="size-5" />, sub: '4 Epics' },
-          { label: 'Build-Status', value: '✓', icon: <CheckCircle className="size-5 text-emerald-500" />, sub: 'Stabil' },
+          { label: 'Module gesamt', value: '15', icon: <Box className="size-5" />, sub: 'Alle aktiv' },
+          { label: 'Aktive ADRs', value: '21', icon: <FileText className="size-5" />, sub: '12 Top-Level + 8 Subsystem + ADR-ZAI' },
+          { label: 'Backlog-Aufgaben', value: '47', icon: <ListTodo className="size-5" />, sub: '22 erledigt · 24 offen · 1 in Arbeit' },
+          { label: 'Build-Status', value: '✓', icon: <CheckCircle className="size-5 text-emerald-500" />, sub: 'RAM 26% · Flash 46%' },
         ].map((stat) => (
           <Card key={stat.label} className="py-4 gap-3">
             <CardContent className="px-4 flex items-center gap-3">
@@ -589,14 +620,14 @@ function BacklogTab() {
   const statusCounts = useMemo(() => ({
     Erledigt: BACKLOG_TASKS.filter(t => t.status === 'Erledigt').length,
     Offen: BACKLOG_TASKS.filter(t => t.status === 'Offen').length,
-    Geplant: BACKLOG_TASKS.filter(t => t.status === 'Geplant').length,
+    'In Arbeit': BACKLOG_TASKS.filter(t => t.status === 'In Arbeit').length,
   }), [])
 
   return (
     <div className="space-y-4">
       {/* Status Summary */}
       <div className="grid grid-cols-3 gap-3">
-        {(['Offen', 'Geplant', 'Erledigt'] as TaskStatus[]).map((s) => (
+        {(['Erledigt', 'Offen', 'In Arbeit'] as TaskStatus[]).map((s) => (
           <Card key={s} className="py-0 gap-0">
             <CardContent className="px-4 py-3 flex items-center gap-3">
               {STATUS_BADGE[s].icon}
@@ -631,7 +662,7 @@ function BacklogTab() {
           </div>
           <Separator orientation="vertical" className="h-7" />
           <div className="flex gap-1">
-            {(['Alle', 'Offen', 'Geplant', 'Erledigt'] as const).map((s) => (
+            {(['Alle', 'Erledigt', 'Offen', 'In Arbeit'] as const).map((s) => (
               <Button
                 key={s}
                 variant={filterStatus === s ? 'default' : 'outline'}
@@ -734,7 +765,7 @@ function BacklogTab() {
             {sortedTasks.length} von {BACKLOG_TASKS.length} Aufgaben
           </span>
           <span className="text-xs text-muted-foreground">
-            TASK-001 bis TASK-047
+            TASK-001 bis TASK-047 · {BACKLOG_TASKS.filter(t => t.status === 'Erledigt').length}/{BACKLOG_TASKS.length} erledigt
           </span>
         </div>
       </Card>
@@ -881,8 +912,8 @@ function DownloadsTab() {
         <CardContent className="space-y-2">
           {[
             { name: 'GitHub Repository', desc: 'Quellcode, Issues & Pull Requests', href: 'https://github.com/Keule/Z.AI_WORK', icon: <Github className="size-4" /> },
-            { name: 'ADR-001: Zwei-Task-Architektur', desc: 'Entscheidungsdokument für Task-Aufteilung', href: 'https://github.com/Keule/Z.AI_WORK/blob/main/docs/ADR-001.md', icon: <FileText className="size-4" /> },
-            { name: 'ADR-002: Modul-Freshness', desc: 'Watchdog-Konzept für alle Module', href: 'https://github.com/Keule/Z.AI_WORK/blob/main/docs/ADR-002.md', icon: <FileText className="size-4" /> },
+            { name: 'ADR-007: Zwei-Task-Architektur', desc: 'Aktuelle Task-Aufteilung (ersetzt ADR-002)', href: 'https://github.com/Keule/Z.AI_WORK/blob/main/esp32_project/docs/adr/ADR-007-two-task-architecture.md', icon: <FileText className="size-4" /> },
+            { name: 'ADR-ZAI-001: Git/GitHub Workflow', desc: 'Agenten-Workflow Regeln & Backup-Strategie', href: 'https://github.com/Keule/Z.AI_WORK/blob/main/esp32_project/docs/adr/ADR-ZAI-001-git-github-workflow.md', icon: <FileText className="size-4" /> },
             { name: 'AgOpenGPS Dokumentation', desc: 'Externe API-Referenz und Protokollspezifikation', href: 'https://github.com/AgOpenGPS', icon: <ExternalLink className="size-4" /> },
           ].map((link) => (
             <a
@@ -1002,7 +1033,7 @@ function ArchitectureTab() {
 
             {/* Layer 3: Module System (Center) */}
             <ArchLayer
-              title="Modul-System — 16 Module"
+              title="Modul-System — 15 Module"
               color="border-primary/40 bg-primary/[0.03] dark:bg-primary/[0.06]"
             >
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -1025,26 +1056,22 @@ function ArchitectureTab() {
 
             {/* Layer 4: FreeRTOS */}
             <ArchLayer
-              title="FreeRTOS — Task-Schicht"
+              title="FreeRTOS — Zwei-Task-Schicht (ADR-007)"
               color="border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/20"
             >
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="rounded-md border border-emerald-200 dark:border-emerald-800 bg-emerald-100 dark:bg-emerald-900/30 p-3 text-center">
                   <p className="text-xs font-bold">task_fast</p>
-                  <p className="text-[10px] text-muted-foreground mt-1">Core 1 · Priorität 5</p>
-                  <Badge variant="outline" className="mt-1.5 text-[9px]">200 Hz · 5 ms</Badge>
+                  <p className="text-[10px] text-muted-foreground mt-1">Core 1 (exklusiv) · Priorität 5</p>
+                  <Badge variant="outline" className="mt-1.5 text-[9px]">100 Hz · 10 ms · 4096 B Stack</Badge>
                 </div>
                 <div className="rounded-md border border-emerald-200 dark:border-emerald-800 bg-emerald-100 dark:bg-emerald-900/30 p-3 text-center">
                   <p className="text-xs font-bold">task_slow</p>
-                  <p className="text-[10px] text-muted-foreground mt-1">Core 0 · Priorität 2</p>
-                  <Badge variant="outline" className="mt-1.5 text-[9px]">Event-driven</Badge>
-                </div>
-                <div className="rounded-md border border-emerald-200 dark:border-emerald-800 bg-emerald-100 dark:bg-emerald-900/30 p-3 text-center">
-                  <p className="text-xs font-bold">maintTask</p>
-                  <p className="text-[10px] text-muted-foreground mt-1">Core 1 · Priorität 1</p>
-                  <Badge variant="outline" className="mt-1.5 text-[9px]">Background</Badge>
+                  <p className="text-[10px] text-muted-foreground mt-1">Core 0 · Priorität 2 · Lifecycle-Owner</p>
+                  <Badge variant="outline" className="mt-1.5 text-[9px]">Event-driven · 8192 B Stack</Badge>
                 </div>
               </div>
+              <p className="text-[9px] text-muted-foreground mt-2 text-center">maintTask ENTFALLEN (ADR-007) — Aufgaben in task_slow integriert</p>
             </ArchLayer>
 
             <ArchConnector />
@@ -1138,7 +1165,7 @@ function ArchitectureTab() {
                 <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800">
                   task_fast · Core 1
                 </Badge>
-                <span className="text-xs text-muted-foreground">200 Hz · 5 ms Zyklus · Periodisch</span>
+                <span className="text-xs text-muted-foreground">100 Hz · 10 ms Zyklus · Periodisch</span>
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
                 {[
@@ -1160,7 +1187,7 @@ function ArchitectureTab() {
                 ))}
               </div>
               <p className="text-[10px] text-muted-foreground mt-2">
-                Pipeline: Sensor-Input → Sicherheitsprüfung → Regelung → Aktuator-Output
+                Pipeline: Sensor-Input → Sicherheitsprüfung → Regelung → Aktuator-Output (nur in WORK)
               </p>
             </div>
 
@@ -1172,48 +1199,18 @@ function ArchitectureTab() {
                 <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300 border-amber-200 dark:border-amber-800">
                   task_slow · Core 0
                 </Badge>
-                <span className="text-xs text-muted-foreground">Event-driven · Kommunikation & Verwaltung</span>
-              </div>
-              <div className="flex flex-wrap items-center gap-1.5">
-                {[
-                  { label: 'ETH/WIFI/BT', color: 'bg-muted border-border text-muted-foreground' },
-                  { label: 'NETWORK', color: CATEGORY_COLORS.Kommunikation },
-                  { label: 'NTRIP', color: CATEGORY_COLORS.Kommunikation },
-                  { label: 'REMOTE_CONSOLE', color: CATEGORY_COLORS.Werkzeug },
-                  { label: 'OTA', color: CATEGORY_COLORS.Werkzeug },
-                  { label: 'LOGGING', color: CATEGORY_COLORS.Werkzeug },
-                ].map((step, i) => (
-                  <div key={step.label} className="flex items-center gap-1.5">
-                    <span className={`rounded-md border px-2.5 py-1.5 text-[11px] font-bold font-mono ${step.color}`}>
-                      {step.label}
-                    </span>
-                    {i < 5 && (
-                      <ArrowRight className="size-3.5 text-amber-400 shrink-0" />
-                    )}
-                  </div>
-                ))}
-              </div>
-              <p className="text-[10px] text-muted-foreground mt-2">
-                Ereignis-Warteschlange: Netzwerk-Events → Modul-Verarbeitung
-              </p>
-            </div>
-
-            <Separator />
-
-            {/* maintTask */}
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <Badge variant="secondary">
-                  maintTask · Core 1
-                </Badge>
-                <span className="text-xs text-muted-foreground">Hintergrund · Priorität 1</span>
+                <span className="text-xs text-muted-foreground">Lifecycle-Owner · Kommunikation & Verwaltung</span>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {[
-                  { label: 'SD-Flush', timing: 'Alle 2 s' },
-                  { label: 'ETH-Link-Monitor', timing: 'Kontinuierlich' },
-                  { label: 'Watchdog-Feed', timing: '5 s Timeout' },
-                  { label: 'LED-Status', timing: '100 ms Toggle' },
+                  { label: 'HW-Monitor', timing: '~1 Hz' },
+                  { label: 'WDT Feed', timing: '5 s Timeout' },
+                  { label: 'SD Flush', timing: 'Alle 2 s' },
+                  { label: 'NTRIP Tick', timing: 'Alle 1 s' },
+                  { label: 'ETH Monitor', timing: 'Kontinuierlich' },
+                  { label: 'GPIO Toggle', timing: '500 ms Debounce' },
+                  { label: 'DBG.loop()', timing: 'TCP Console' },
+                  { label: 'CLI Polling', timing: 'Serial/TCP' },
                 ].map((t) => (
                   <div key={t.label} className="rounded-md border border-border bg-muted/50 p-2.5 text-center">
                     <p className="text-[11px] font-semibold">{t.label}</p>
@@ -1221,6 +1218,9 @@ function ArchitectureTab() {
                   </div>
                 ))}
               </div>
+              <p className="text-[10px] text-muted-foreground mt-2">
+                SharedSlot RTCM → UART · Setup Wizard (CONFIG) · Sub-Task Management
+              </p>
             </div>
 
             <Separator />
@@ -1229,19 +1229,19 @@ function ArchitectureTab() {
             <div>
               <p className="text-xs font-semibold mb-2 flex items-center gap-1.5">
                 <Fingerprint className="size-3.5" />
-                Inter-Task-Kommunikation via SharedSlot&lt;T&gt;
+                Inter-Task-Kommunikation via SharedSlot&lt;T&gt; (ADR-007 §4)
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="rounded-md border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/20 p-3">
-                  <p className="text-[11px] font-semibold text-sky-800 dark:text-sky-300">Producer: task_fast</p>
+                  <p className="text-[11px] font-semibold text-sky-800 dark:text-sky-300">Producer: task_slow (NTRIP)</p>
                   <p className="text-[10px] text-muted-foreground mt-1">
-                    Schreibt GNSS/IMU/WAS-Daten in SharedSlot → task_slow liest für NTRIP-Korrektur & Logging
+                    <code className="text-[10px] font-mono">SharedSlot&lt;RtcmChunk&gt;</code> — NTRIP TCP → 512 B Chunk → task_fast liest für UART-Forwarding
                   </p>
                 </div>
                 <div className="rounded-md border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-950/20 p-3">
-                  <p className="text-[11px] font-semibold text-sky-800 dark:text-sky-300">Producer: task_slow</p>
+                  <p className="text-[11px] font-semibold text-sky-800 dark:text-sky-300">Zugriff: StateLock-geschützt (ADR-STATE-001)</p>
                   <p className="text-[10px] text-muted-foreground mt-1">
-                    Schreibt NTRIP-Korrekturen & Netzwerk-Commands in SharedSlot → task_fast liest für Pipeline
+                    <code className="text-[10px] font-mono">dirty</code>-Flag + <code className="text-[10px] font-mono">last_update_ms</code> für Freshness-Check · Alle Cross-Task-Zugriffe unter Mutex
                   </p>
                 </div>
               </div>
@@ -1379,7 +1379,7 @@ function ArchitectureTab() {
                     </div>
                     <div className="flex items-start gap-1.5">
                       <CheckCircle className="size-3 text-emerald-500 mt-0.5 shrink-0" />
-                      <span className="text-muted-foreground">task_fast Pipeline aktiv (200 Hz)</span>
+                      <span className="text-muted-foreground">task_fast Pipeline aktiv (100 Hz)</span>
                     </div>
                     <div className="flex items-start gap-1.5">
                       <CheckCircle className="size-3 text-emerald-500 mt-0.5 shrink-0" />
