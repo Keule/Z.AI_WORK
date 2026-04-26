@@ -128,7 +128,6 @@ void sdLoggerEthMonitor(void);
 /// Initialise the maintenance functions (backward-compat wrapper).
 ///
 /// Calls sdLoggerInitPsram() to allocate the PSRAM ring buffer.
-/// Previously also created the maintTask — now just allocates the buffer.
 ///
 /// Must be called AFTER hal_esp32_init_all() but BEFORE
 /// creating the control/comm tasks.

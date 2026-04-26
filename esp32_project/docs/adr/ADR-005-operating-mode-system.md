@@ -1,6 +1,13 @@
 # ADR-005: Betriebsmodus-System (Active / Paused)
 
-- Status: superseded by ADR-007
+> **⚠️ DEPRECATED — This ADR is superseded by ADR-007 (Two-Task Architecture).**
+> The 3-state mode system (BOOTING → ACTIVE ↔ PAUSED) has been replaced by
+> the 2-state model (CONFIG ↔ WORK) defined in `module_interface.h`.
+> See ADR-007 and the Gesamtkonzept for the current design.
+> The corresponding implementation files (`op_mode.h`, `op_mode.cpp`) have been deleted.
+> This document is retained for historical reference only.
+
+- Status: ~~superseded~~ **deprecated** — see ADR-007
 - Datum: 2026-04-24
 - Verwandte ADRs: ADR-002 (Taskmodell), ADR-003 (Feature-Module), ADR-STATE-001 (StateLock)
 

@@ -1,5 +1,28 @@
 # ZAI_GPS — Modul-Architektur Refactoring Brief
 
+> **⚠️ HISTORICAL DOCUMENT — Pre-Refactoring State (April 2026)**
+>
+> This brief was written before the refactoring phases (1–4) were executed.
+> All seven identified problems (P1–P7) have been resolved:
+>
+> | Problem | Resolution |
+> |---------|-----------|
+> | P1 HAL Init feature-blind | Feature gates in `hal_esp32_init_all()` |
+> | P2 Logic-Init orphaned | Removed dead `imuInit()`, `steerAngleInit()`, `actuatorInit()` |
+> | P3 Kein einheitliches Modul-Interface | ModuleOps2 unified module system (ADR-MODULE-002) |
+> | P4 Doppelte State-Schreibungen | WAS writes to SteerState only, PID output separate |
+> | P5 Monolithischer Global State | Sub-structs in `state_structs.h` with ownership rules |
+> | P6 controlStep() buendelt alles | Replaced by module pipeline: `mod_safety.input()` → `mod_steer.process()` → `mod_steer.output()` |
+> | P7 RTCM ohne Feature-Gate | `FEAT_GNSS` gate applied |
+>
+> **Current architecture**: ADR-007 Two-Task model (task_fast + task_slow) with ModuleOps2 pipeline.
+> See `docs/GESAMTKONZEPT-two-task-architecture.md` and `docs/adr/ADR-007-two-task-architecture.md`.
+>
+> Files referenced below (`control.cpp`, `modules.cpp`, `steer_angle.cpp`, `actuator.cpp`) **no longer exist**.
+> They were replaced by `mod_steer.cpp`, `mod_imu.cpp`, `mod_was.cpp`, `mod_safety.cpp`, `mod_actuator.cpp`, etc.
+
+---
+
 > **Zweck:** Dieser Brief richtet sich an KI-Agenten, die Code-Aenderungen an der
 > ZAI_GPS Firmware vornehmen sollen. Er enthaelt die vollstaendige Architektur-Analyse,
 > alle identifizierten Probleme, die Refactoring-Vorschlaege und den noetigen Kontext,

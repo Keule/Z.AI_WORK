@@ -15,7 +15,7 @@
 void cliInit(void);
 
 /// Verarbeitet eine komplette Eingabezeile.
-/// Wird aus loop() aufgerufen wenn eine Zeile komplett empfangen wurde.
+/// Wird aus task_slow aufgerufen wenn eine Zeile komplett empfangen wurde.
 void cliProcessLine(const char* line);
 
 /// Setzt das Ausgabemedium (Standard: Serial).

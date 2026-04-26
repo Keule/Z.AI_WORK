@@ -1,6 +1,11 @@
 # ADR-002: Taskmodell mit controlTask, commTask und maintTask
 
-- Status: superseded by ADR-007
+> **⚠️ DEPRECATED — This ADR is superseded by ADR-007 (Two-Task Architecture).**
+> The 3-task model (controlTask + commTask + maintTask) has been replaced by
+> the 2-task model (task_fast + task_slow). See ADR-007 for the current architecture.
+> This document is retained for historical reference only.
+
+- Status: ~~superseded~~ **deprecated** — see ADR-007
 - Datum: 2026-04-20
 
 ## Kontext

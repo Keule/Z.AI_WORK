@@ -14,40 +14,41 @@
 #include <cstdint>
 
 /**
- * OWNERSHIP RULES — Phase 3
+ * OWNERSHIP RULES — ADR-007 Two-Task Architecture
  *
  * Each sub-struct has exactly ONE designated writer module.
  * Violation of these rules causes race conditions or data corruption.
+ * All accesses to g_nav must be protected by StateLock (ADR-STATE-001).
  *
  * ImuState:
- *   Writer: imu.cpp (imuUpdate())
- *   Readers: net.cpp (PGN 253/214), sd_logger.cpp, hw_status.cpp
+ *   Writer: mod_imu.cpp (mod_imu_input)
+ *   Readers: mod_network.cpp (PGN 253/214), mod_logging.cpp, hw_status.cpp
  *
  * SteerState:
- *   Writer: control.cpp (controlStep() ONLY)
- *   Readers: net.cpp (PGN 253/250), sd_logger.cpp, modules.cpp
- *   NOTE: was.cpp only CACHES sensor values, never writes to g_nav.
+ *   Writer: mod_was.cpp (mod_was_input — sensor read),
+ *           mod_steer.cpp (mod_steer_process — PID output)
+ *   Readers: mod_network.cpp (PGN 253/250), mod_logging.cpp
  *
  * SwitchState:
- *   Writer: net.cpp (PGN 254 handler in netProcessFrame())
- *   Readers: control.cpp (controlStep()), modules.cpp
- *   ADR-STATE-001: desiredSteerAngleDeg zugeordnet (ehemals eigenes volatile)
+ *   Writer: mod_network.cpp (mod_network_input — PGN 254)
+ *           module_system.cpp (modeSet() — paused flag)
+ *   Readers: mod_steer.cpp, mod_logging.cpp
  *
  * PidConfigState:
- *   Writers: control.cpp (controlUpdateSettings() for settings_* and pid_output),
- *            net.cpp (PGN 251 handler for config_*)
- *   Readers: net.cpp, modules.cpp
+ *   Writers: mod_steer.cpp (mod_steer_process — settings_*, pid_output),
+ *            mod_network.cpp (mod_network_input — PGN 251 config_*)
+ *   Readers: mod_network.cpp, mod_logging.cpp
  *
  * SafetyState:
- *   Writer: control.cpp (controlStep())
- *   Readers: net.cpp, modules.cpp, hw_status.cpp, sd_logger.cpp
+ *   Writer: mod_safety.cpp (mod_safety_input)
+ *   Readers: mod_steer.cpp, mod_network.cpp, mod_logging.cpp, hw_status.cpp
  *
  * GnssState:
- *   Writer: net.cpp (netUpdateUm980Status())
- *   Readers: net.cpp (PGN 214 encoding), main.cpp
+ *   Writer: mod_network.cpp (mod_network_input — netUpdateUm980Status())
+ *   Readers: mod_network.cpp (PGN 214 encoding), main.cpp
  */
 
-// --- IMU State (Writer: imu.cpp) ---
+// --- IMU State (Writer: mod_imu.cpp) ---
 struct ImuState {
     float    heading_deg              = 0.0f;
     float    roll_deg                 = 0.0f;
@@ -58,7 +59,7 @@ struct ImuState {
     bool     imu_quality_ok           = false;
 };
 
-// --- Steering State (Writer: control.cpp ONLY) ---
+// --- Steering State (Writer: mod_was.cpp, mod_steer.cpp) ---
 struct SteerState {
     float    steer_angle_deg          = 0.0f;
     int16_t  steer_angle_raw          = 0;
@@ -96,7 +97,7 @@ struct PidConfigState {
     bool     config_received          = false;
 };
 
-// --- Safety State (Writer: control.cpp) ---
+// --- Safety State (Writer: mod_safety.cpp) ---
 struct SafetyState {
     bool     safety_ok                = false;
     bool     watchdog_triggered       = false;

@@ -41,7 +41,7 @@ struct NavigationState {
 };
 
 // ---------------------------------------------------------------------------
-// Global instance (defined in control.cpp or main)
+// Global instance (defined in global_state.cpp)
 // ---------------------------------------------------------------------------
 extern NavigationState g_nav;
 

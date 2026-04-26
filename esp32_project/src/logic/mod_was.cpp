@@ -33,7 +33,7 @@ static constexpr uint32_t FRESHNESS_TIMEOUT_MS = dep_policy::STEER_ANGLE_FRESHNE
 // ===================================================================
 static ModState s_state;
 
-// Cached sensor values (not written to g_nav — control.cpp owns SteerState)
+// Cached sensor values (not written to g_nav — mod_steer.cpp owns SteerState output)
 static float    s_cached_angle_deg  = 0.0f;
 static int16_t  s_cached_raw        = 0;
 

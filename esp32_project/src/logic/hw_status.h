@@ -9,7 +9,7 @@
  *   hwStatusInit()         – call once during setup
  *   hwStatusSetFlag(id)    – set a subsystem error flag
  *   hwStatusClearFlag(id)  – clear a subsystem error flag
- *   hwStatusUpdate()       – call periodically from commTask to check & send messages
+ *   hwStatusUpdate()       – call periodically from task_slow to check & send messages
  */
 
 #pragma once
@@ -99,7 +99,7 @@ uint8_t hwStatusErrorCount(void);
 
 // ===================================================================
 // Periodic update: check subsystems, send HW messages for active errors.
-/// Should be called from commTask at ~1 Hz (lower rate than data frames).
+/// Should be called from task_slow at ~1 Hz (lower rate than data frames).
 /// @param connected  true if Ethernet/network is up
 /// @param safety_ok  true if safety circuit is OK
 /// @param steer_angle_valid  true if steer angle sensor reading is plausible

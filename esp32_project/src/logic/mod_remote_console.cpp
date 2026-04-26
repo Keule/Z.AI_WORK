@@ -10,7 +10,7 @@
  *
  * Activate:   DBG.begin(port), enableTcp(true), setInputCallback()
  * Deactivate: DBG.end()
- * loop():     DBG.loop() — called from main loop() via output() pipeline
+ * loop():     DBG.loop() — called from task_slow via output() pipeline
  */
 
 #include "mod_remote_console.h"

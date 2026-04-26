@@ -861,7 +861,7 @@ static void taskFastFunc(void* param) {
 // ===================================================================
 // task_slow – background services on Core 0 (ADR-007)
 //
-// Absorbs former commTask + loop() + maintTask responsibilities:
+// Absorbs former commTask + loop() responsibilities:
 //   - HW status monitoring (~1 Hz)
 //   - DBG.loop() for TCP console
 //   - Serial/TCP CLI polling
@@ -870,6 +870,7 @@ static void taskFastFunc(void* param) {
 //   - Watchdog feed
 //   - SD card flush (every 2 s via sdLoggerTick())
 //   - NTRIP state machine tick (every 1 s via ntripTick())
+//   - NTRIP RTCM read → SharedSlot (every poll via ntripReadToSlot())
 //   - ETH link monitoring (every 1 s via sdLoggerEthMonitor())
 //   - GPIO mode-toggle polling (CONFIG <-> WORK)
 //
@@ -882,7 +883,7 @@ static void taskSlowFunc(void* param) {
     // Wait for network + modules to stabilise
     vTaskDelay(pdMS_TO_TICKS(2000));
 
-    // --- Local state (moved from former commTaskFunc + loop()) ---
+    // --- Local state ---
     uint32_t slow_dbg_count = 0;
     uint32_t slow_freq_start = hal_millis();
     uint32_t last_hw_status_ms = 0;

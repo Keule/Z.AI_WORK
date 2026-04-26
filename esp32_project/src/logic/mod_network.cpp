@@ -304,7 +304,7 @@ static void pollRtcmReceiveAndForward(void) {
 #endif
 
 // ===================================================================
-// Module hello/subnet replies (migrated from modules.cpp)
+// Module hello/subnet replies (AOG protocol)
 // TODO: Implement full AOG module hello/subnet protocol
 // ===================================================================
 
