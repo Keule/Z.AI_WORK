@@ -30,6 +30,7 @@ import {
 // ─── DATA ─────────────────────────────────────────────────────────────────────
 
 const COMMITS = [
+  { hash: 'bf14d7d', message: 'Phase 3: SharedSlot NTRIP (RTCMPipeline → SharedSlot&lt;RtcmChunk&gt;)', date: '2026-06', phase: 'Phase 3' },
   { hash: 'a3f8d21', message: 'Phase 2: Codebereinigung & Dokumentation', date: '2025-06-14', phase: 'Phase 2' },
   { hash: 'b7e2c09', message: 'Phase 1: Finaler Merge aller Module', date: '2025-06-10', phase: 'Phase 1' },
   { hash: 'c4d1a55', message: 'Merge PR #12: NTRIP-Client Implementierung', date: '2025-06-08', phase: 'PR' },
@@ -103,7 +104,7 @@ interface BacklogTask {
 const BACKLOG_TASKS: BacklogTask[] = [
   { id: 'TASK-001', title: 'Watchdog-Timeout analysieren & anpassen', epic: 'EPIC-001', epicName: 'Laufzeitstabilität', priority: 'Hoch', status: 'Offen' },
   { id: 'TASK-002', title: 'Stack-Überwachung für task_fast/task_slow', epic: 'EPIC-001', epicName: 'Laufzeitstabilität', priority: 'Hoch', status: 'Offen' },
-  { id: 'TASK-003', title: 'maintTask watchdog-less Implementierung', epic: 'EPIC-001', epicName: 'Laufzeitstabilität', priority: 'Hoch', status: 'Geplant' },
+  { id: 'TASK-003', title: 'task_slow: WDT-Feed & System-Health (ehemals maintTask)', epic: 'EPIC-001', epicName: 'Laufzeitstabilität', priority: 'Hoch', status: 'Offen' },
   { id: 'TASK-004', title: 'Heap-Fragmentierung unter Last testen', epic: 'EPIC-001', epicName: 'Laufzeitstabilität', priority: 'Mittel', status: 'Offen' },
   { id: 'TASK-005', title: 'Network reconnect bei Verlust robustifizieren', epic: 'EPIC-001', epicName: 'Laufzeitstabilität', priority: 'Mittel', status: 'Offen' },
   { id: 'TASK-010', title: 'IMU Kalman-Filter Stabilität prüfen', epic: 'EPIC-002', epicName: 'Sensor & Sicherheit', priority: 'Hoch', status: 'Offen' },
@@ -247,7 +248,7 @@ function OverviewTab() {
               Architektur: Zwei-Task-Design
             </CardTitle>
             <CardDescription>
-              Deterministische Echtzeitverarbeitung mit priorisierter Tasks
+              Zwei-Task-Architektur (ADR-007) — maintTask integriert in task_slow
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -265,7 +266,7 @@ function OverviewTab() {
                   GNSS → IMU → WAS → STEER → ACTUATOR
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Periodisch · 200 Hz · Sensor → Aktuator Pfad
+                  Periodisch · 100 Hz · Sensor → Aktuator Pfad
                 </p>
               </div>
 
@@ -279,24 +280,27 @@ function OverviewTab() {
                   <Badge variant="outline" className="text-xs ml-auto">Priorität 2</Badge>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  ETH/WIFI/BT → NTRIP → NETWORK → REMOTE_CONSOLE → OTA → LOGGING
+                  HW-Monitor · WDT Feed · SD Flush · NTRIP Tick · ETH Monitor
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  SharedSlot RTCM → UART · DBG.loop() · CLI Polling
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Eventgesteuert · Kommunikation & Verwaltung
+                  Eventgesteuert · Lifecycle-Owner · Kommunikation & Verwaltung
                 </p>
               </div>
 
-              {/* maintTask */}
-              <div className="rounded-lg border border-muted-foreground/20 bg-muted/50 p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Badge variant="secondary" className="text-xs">
-                    Background
+              {/* ADR-007: maintTask ENTFALLEN — Verantwortlichkeiten in task_slow integriert */}
+              <div className="rounded-lg border border-dashed border-muted-foreground/20 bg-muted/30 p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">
+                    ADR-007
                   </Badge>
-                  <span className="font-semibold text-sm">maintTask</span>
-                  <Badge variant="outline" className="text-xs ml-auto">Priorität 1</Badge>
+                  <span className="text-xs text-muted-foreground line-through">maintTask</span>
+                  <span className="text-[10px] text-muted-foreground">→ task_slow integriert</span>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Watchdog · LED-Status · System-Health · Garbage Collection
+                <p className="text-[10px] text-muted-foreground">
+                  SD Flush · NTRIP Tick · ETH Monitor · WDT Feed · SharedSlot RTCM
                 </p>
               </div>
             </div>
@@ -354,7 +358,7 @@ function OverviewTab() {
           </div>
           <div className="mt-4 text-center">
             <p className="text-xs text-muted-foreground">
-              Übergang: CONFIG → WORK nach Parameter-Validierung · WORK → CONFIG bei Fehler oder Benutzeranfrage
+              Übergang: CONFIG → WORK bei Safety-Pin HIGH · WORK → CONFIG bei Safety-Pin LOW + Geschwindigkeit &lt; Schwellwert oder CLI `mode setup`
             </p>
           </div>
         </CardContent>
@@ -786,7 +790,7 @@ function DownloadsTab() {
               ['Datei', 'ZAI_GPS_Firmware_Architecture.pdf'],
               ['Größe', '149 KB'],
               ['Typ', 'PDF Dokument'],
-              ['Stand', 'Phase 2 — Juni 2025'],
+              ['Stand', 'Phase 3 — Juni 2026'],
             ].map(([k, v]) => (
               <div key={k} className="flex justify-between text-sm">
                 <span className="text-muted-foreground">{k}</span>
@@ -845,8 +849,8 @@ function DownloadsTab() {
               <div className="space-y-2">
                 <div className="rounded-lg border-2 border-solid border-primary p-3">
                   <p className="text-xs font-semibold">Processing Core</p>
-                  <p className="text-[10px] text-muted-foreground mt-1">task_fast (200 Hz)</p>
-                  <p className="text-[10px] text-muted-foreground">PID · Kalman · SAFETY</p>
+                  <p className="text-[10px] text-muted-foreground mt-1">task_fast (100 Hz) · task_slow (variabel)</p>
+                  <p className="text-[10px] text-muted-foreground">PID · Kalman · SAFETY · NTRIP · SD</p>
                 </div>
               </div>
               <div className="space-y-2">
