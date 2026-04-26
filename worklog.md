@@ -1,5 +1,20 @@
 # ZAI_GPS Project Worklog
 
+## Session: Phase 1+2 Korrektur — Thread-Safe OpMode + Sub-Task Lifecycle
+
+### Projektstatus
+- **Branch**: main (Commit 1c1f70e)
+- **Backup Branch**: `backup/phase1-3-done` (lokal, nicht auf Remote gepusht — GitHub Token fehlt)
+- **Build**: ✅ SUCCESS (RAM 26.0%, Flash 45.9%)
+- **Phase 1 Fix**: ✅ modeSet()/modeGet() jetzt Thread-Safe (portMUX spinlock)
+- **Phase 2**: ✅ Komplett implementiert (war vorher nur superficial: Shim-Entfernung)
+
+### Zusammenfassung Änderungen
+- 5 Dateien geändert, +266/-39 Zeilen
+- Commit: 1c1f70e "Phase 1+2: Thread-safe OpMode + Sub-Task Lifecycle management"
+
+---
+
 ## Session: Phase 1 + Phase 2 ESP32 Firmware Migration & Dashboard
 
 ### Project Status Assessment
