@@ -8,9 +8,9 @@
  * Architecture (TASK-029):
  *   - Control loop calls sdLoggerRecord() to buffer one sample into
  *     a PSRAM-backed ring buffer (~1 MB, ~53 min at 10 Hz)
- *   - The maintTask (lowest priority, Core 0) periodically drains
- *     the ring buffer and writes CSV records to the SD card
- *   - maintTask also handles NTRIP connect/reconnect and ETH monitoring
+ *   - task_slow (Core 0) periodically calls sdLoggerTick() every 2 s
+ *     to drain the ring buffer and write CSV records to the SD card
+ *   - task_slow also handles NTRIP connect/reconnect and ETH monitoring
  *   - The SD card shares SPI2_HOST (SD_SPI_BUS) with the sensor bus,
  *     so the sensor SPI is temporarily released during writes
  *   - The hardware switch is checked before each flush cycle
@@ -19,6 +19,8 @@
  *   sdLoggerMaintInit(); // call once in setup() after OTA check
  *   // In control loop:
  *   sdLoggerRecord();    // buffer one sample (subsampled internally)
+ *   // In task_slow (every 2 s):
+ *   sdLoggerTick();      // flush ring buffer to SD card
  */
 
 #pragma once
@@ -36,7 +38,7 @@ extern "C" {
 
 /// A single log record – compact binary representation.
 /// Written to ring buffer by the control loop, converted to CSV
-/// by the logger task when flushing to SD card.
+/// by the logger when flushing to SD card.
 typedef struct {
     uint32_t timestamp_ms;   ///< milliseconds since boot
     float   heading_deg;     ///< heading [degrees, 0-360]
@@ -51,17 +53,16 @@ typedef struct {
 // Public API
 // ===================================================================
 
-/// Initialise the SD logger (legacy — creates standalone loggerTask).
+/// Initialise the SD logger (legacy — no task creation).
 ///
-/// Sets up GPIO 47 as input with pull-up (logging switch),
-/// creates the logger FreeRTOS task (lowest priority).
+/// Sets up GPIO 47 as input with pull-up (logging switch).
 /// Uses the internal static 16 KB ring buffer.
 ///
 /// Must be called AFTER hal_esp32_init_all() but BEFORE
 /// creating the control/comm tasks.
 ///
 /// Prefer sdLoggerMaintInit() for TASK-029 builds (PSRAM buffer
-/// + combined maintenance task).
+/// + task_slow integration).
 void sdLoggerInit(void);
 
 /// Buffer one log record.
@@ -102,18 +103,32 @@ uint32_t sdLoggerGetBufferCount(void);
 void sdLoggerSetExternalBuffer(SdLogRecord* buf, uint32_t capacity);
 
 // ===================================================================
-// TASK-029: Maintenance Task + PSRAM Ring Buffer
+// TASK-029: PSRAM Ring Buffer + task_slow Integration
 // ===================================================================
 
-/// Initialise the maintenance task with PSRAM-backed ring buffer.
+/// Allocate the PSRAM-backed ring buffer.
 ///
-/// Replaces sdLoggerInit() for TASK-029 builds:
-///   - Allocates ~1 MB ring buffer from PSRAM (falls back to heap)
-///   - Creates the maintTask on Core 0 (priority 1, stack 8 KB)
-///   - The maintTask handles:
-///       1. SD card flush (every 2 s)
-///       2. NTRIP connect/reconnect state machine (every 1 s)
-///       3. ETH link monitoring (on change)
+/// Idempotent — safe to call multiple times (Issue 3: double-init guard).
+/// Returns true if a large buffer (PSRAM or heap) was successfully allocated.
+///
+/// Called by sdLoggerMaintInit() and directly by mod_logging.activate().
+bool sdLoggerInitPsram(void);
+
+/// One iteration of the SD flush state machine.
+/// Called from task_slow every 2 s.
+///
+/// Handles switch debounce, SD card SPI bus claim/release,
+/// log file open/close, and ring buffer → CSV flush.
+void sdLoggerTick(void);
+
+/// ETH link monitoring — log on link UP/DOWN transitions.
+/// Called from task_slow every ~1 s.
+void sdLoggerEthMonitor(void);
+
+/// Initialise the maintenance functions (backward-compat wrapper).
+///
+/// Calls sdLoggerInitPsram() to allocate the PSRAM ring buffer.
+/// Previously also created the maintTask — now just allocates the buffer.
 ///
 /// Must be called AFTER hal_esp32_init_all() but BEFORE
 /// creating the control/comm tasks.
@@ -127,30 +142,6 @@ bool sdLoggerPsramBufferActive(void);
 /// Get current PSRAM buffer fill count (diagnostics).
 /// Returns 0 if PSRAM buffer is not active.
 uint32_t sdLoggerPsramBufferCount(void);
-
-// ===================================================================
-// Sub-Task Lifecycle API (Phase 2)
-// ===================================================================
-
-/// Check if the maintenance task is currently running.
-/// Returns true if the task handle is non-null and the task has not been
-/// marked for exit.
-bool maintTaskIsRunning(void);
-
-/// Start the maintenance task (duplicate-guarded).
-/// If the task is already running, returns false without creating a second task.
-/// Returns true if a new task was successfully created.
-bool maintTaskStart(void);
-
-/// Request the maintenance task to stop gracefully.
-/// Sets the exit flag and waits up to 3 seconds for the task to self-delete.
-/// Returns true if the task stopped within the timeout, false otherwise.
-bool maintTaskStop(void);
-
-/// Get the FreeRTOS task handle for the maintenance task.
-/// Returns nullptr if the task is not running.
-/// Useful for diagnostics (eTaskGetState, vTaskList, etc.).
-void* maintTaskGetHandle(void);
 
 #ifdef __cplusplus
 }

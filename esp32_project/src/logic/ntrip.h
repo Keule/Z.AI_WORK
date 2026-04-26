@@ -27,9 +27,9 @@
 /// Must be called after hal_mutex_init() and before ntripTick().
 void ntripInit(void);
 
-/// State machine tick — call from maintTask (TASK-029).
+/// State machine tick — call from task_slow (TASK-029).
 /// Handles state transitions, reconnect timing, and error recovery.
-/// Blocking TCP connect runs here (safe at lowest priority).
+/// Blocking TCP connect runs here (safe on Core 0 slow path).
 void ntripTick(void);
 
 // ===================================================================

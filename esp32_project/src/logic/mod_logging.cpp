@@ -7,8 +7,9 @@
  *   process() — No-Op
  *   output()  — calls sdLoggerRecord() to buffer one sample
  *
- * The maintenance task (draining the ring buffer to SD) is started by
- * sdLoggerMaintInit() and runs independently of the pipeline.
+ * The SD flush (draining the ring buffer to SD) is called by task_slow
+ * via sdLoggerTick() every 2 s. PSRAM buffer allocation happens
+ * during module activation (sdLoggerInitPsram()).
  *
  * Logging has no freshness concept — it is asynchronous and event-driven
  * (hardware switch + ring buffer).  Health is simply: detected && no error.
@@ -81,9 +82,9 @@ static void mod_logging_activate(void) {
     s_sd_detected = hal_sd_card_present();
 
     if (s_sd_detected) {
-        // Start the maintenance task + PSRAM ring buffer.
-        // Phase 2: Use maintTaskStart() — duplicate guard prevents second task.
-        maintTaskStart();
+        // Allocate PSRAM ring buffer for logging.
+        // sdLoggerInitPsram() is idempotent (Issue 3: double-init guard).
+        sdLoggerInitPsram();
         s_state.detected = true;
         s_state.error_code = LOG_ERR_OK;
         hal_log("LOGGING: activated (SD card detected)");

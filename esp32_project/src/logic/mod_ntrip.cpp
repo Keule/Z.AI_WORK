@@ -125,8 +125,8 @@ static ModuleResult mod_ntrip_input(uint32_t now_ms) {
 
 static ModuleResult mod_ntrip_process(uint32_t now_ms) {
     // NOTE: ntripTick() is NOT called here — it contains a blocking TCP
-    // connect (5s timeout) and must run in the low-priority maintTask
-    // (TASK-029/ADR-002). The maintTask calls ntripTick() directly.
+    // connect (5s timeout) and must run in task_slow
+    // (TASK-029/ADR-002). task_slow calls ntripTick() directly.
 
     // Check for error states and map to error codes
     NtripConnState conn_state;

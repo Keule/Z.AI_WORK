@@ -364,27 +364,34 @@ OpMode modeGet(void) {
 }
 
 bool modeSet(OpMode target) {
+    // Issue 6: Return true for no-op same-mode transitions.
+    // Issue 1: Snapshot pipeline readiness BEFORE acquiring spinlock
+    // to avoid calling moduleSysIsActive() (unprotected s_modules[])
+    // inside the critical section (TOCTOU data race).
+    bool steer_ready = false;
+    if (target == OpMode::WORK) {
+        steer_ready = moduleSysIsActive(ModuleId::IMU) &&
+                       moduleSysIsActive(ModuleId::WAS) &&
+                       moduleSysIsActive(ModuleId::ACTUATOR) &&
+                       moduleSysIsActive(ModuleId::SAFETY) &&
+                       moduleSysIsActive(ModuleId::STEER);
+    }
+
     portENTER_CRITICAL(&s_mode_mutex);
+    // No-op same-mode: return true (Issue 6)
     if (target == s_op_mode) {
         portEXIT_CRITICAL(&s_mode_mutex);
-        return false;
+        return true;
     }
 
     if (target == OpMode::WORK) {
-        // Check steer pipeline readiness
-        bool steer_ok = moduleSysIsActive(ModuleId::IMU) &&
-                        moduleSysIsActive(ModuleId::WAS) &&
-                        moduleSysIsActive(ModuleId::ACTUATOR) &&
-                        moduleSysIsActive(ModuleId::SAFETY) &&
-                        moduleSysIsActive(ModuleId::STEER);
-        if (!steer_ok) {
+        if (!steer_ready) {
             portEXIT_CRITICAL(&s_mode_mutex);
             hal_log("MODE: CONFIG -> WORK rejected: steer pipeline incomplete");
             return false;
         }
         s_op_mode = OpMode::WORK;
         portEXIT_CRITICAL(&s_mode_mutex);
-        // Clear paused flag — used by PGN 253 switchStatus and AgIO
         {
             StateLock lock;
             g_nav.sw.paused = false;
@@ -397,7 +404,6 @@ bool modeSet(OpMode target) {
     if (target == OpMode::CONFIG) {
         s_op_mode = OpMode::CONFIG;
         portEXIT_CRITICAL(&s_mode_mutex);
-        // Set paused flag — used by PGN 253 switchStatus and AgIO
         {
             StateLock lock;
             g_nav.sw.paused = true;

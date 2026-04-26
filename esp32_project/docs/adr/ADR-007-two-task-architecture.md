@@ -76,7 +76,9 @@ getrennten Modi.
   - DBG.loop() für TCP
   - Serial/TCP CLI-Polling
   - WDT-Feed
-  - Sub-Task-Management
+  - SD Flush (alle 2 s via sdLoggerTick())
+  - NTRIP State Machine Tick (alle 1 s via ntripTick())
+  - ETH Link Monitoring (via sdLoggerEthMonitor())
 - **Inhalt (SETUP-Modus)**:
   - Alles aus RUN-Modus, plus:
   - Vollzugriff CLI (alle Kommandos)
@@ -86,7 +88,6 @@ getrennten Modi.
   - Diagnose-Ausgaben
 - **Invarianten**:
   - Darf blockieren (TCP connect, SD write)
-  - Verwaltet Lifecycle aller Sub-Tasks
   - Shared-State-Zugriff unter StateLock
 
 #### Arduino loop()
@@ -109,8 +110,8 @@ können **einen** dedizierten Sub-Task auf Core 0 spawnen.
 - Sub-Tasks dürfen `task_fast` niemals direkt aufrufen oder blockieren.
 
 **Bestehende Sub-Tasks (Migration):**
-- NTRIP: TCP connect/reconnect → schreibt RTCM-Daten in Shared Buffer
-- SD Logger: SD flush → geplante Auslagerung aus maintTask
+- maintTask: **ENTFALLEN** — SD flush + NTRIP + ETH Monitoring jetzt direkt
+  in task_slow integriert (kein separater Task mehr)
 
 ### 4. Shared State Pattern (task_slow ↔ task_fast)
 
@@ -214,7 +215,7 @@ src/logic/shared_state.h                    (neu — SharedSlot<T> Template)
 |---------|---------|
 | controlTask (Core 1, 200 Hz) | task_fast (Core 1, konfigurierbar, default 100 Hz) |
 | commTask (Core 0, 100 Hz) | **entfällt** → Aufgabe wandert in task_slow |
-| maintTask (Core 0, variabel) | **entfällt** → Aufgabe wandert in task_slow |
+| maintTask (Core 0, variabel) | **entfällt** → SD flush + NTRIP + ETH wandern direkt in task_slow |
 | Arduino loop() (Core 0, ~10 Hz) | **entfällt** → bleibt nur als setup()-Orchestrator |
 
 ## Konsequenzen

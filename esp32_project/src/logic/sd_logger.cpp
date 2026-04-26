@@ -4,7 +4,7 @@
  *
  * The ring buffer is a lock-free single-producer / single-consumer queue:
  *   - Producer: control loop (Core 1) calls sdLoggerRecord()
- *   - Consumer: maintTask (Core 0) calls sdLoggerHasRecords()/sdLoggerReadRecord()
+ *   - Consumer: task_slow (Core 0) calls sdLoggerHasRecords()/sdLoggerReadRecord()
  *
  * The ring buffer uses power-of-2 size so wrap-around can be done
  * with a simple mask instead of modulo.
@@ -56,7 +56,7 @@ static uint32_t s_ring_mask = LOG_RING_SIZE_DEFAULT - 1;
 ///   s_write_idx = (s_write_idx + 1) & s_ring_mask;
 static volatile uint32_t s_write_idx = 0;
 
-/// Read index – only modified by the consumer (maintTask).
+/// Read index – only modified by the consumer (task_slow).
 /// After reading from s_ring_buf[s_read_idx], the consumer does:
 ///   s_read_idx = (s_read_idx + 1) & s_ring_mask;
 static volatile uint32_t s_read_idx = 0;
@@ -82,7 +82,7 @@ static volatile uint32_t s_call_counter = 0;
 extern "C" bool sdLoggerReadSwitch(void);
 
 /// Drain the ring buffer: read all pending records and write to SD.
-/// Called by the maintTask. Returns the number of records flushed.
+/// Called by task_slow. Returns the number of records flushed.
 extern "C" uint32_t sdLoggerDrainBuffer(void);
 
 /// Close the current log file and release the SD card.
@@ -194,7 +194,7 @@ uint32_t sdLoggerPsramBufferCount(void) {
 }
 
 // ===================================================================
-// Buffer access – called from the maintTask (consumer side)
+// Buffer access – called from task_slow (consumer side)
 // ===================================================================
 
 /// Check if there are records waiting in the ring buffer.

@@ -6,10 +6,12 @@
  *
  * Two FreeRTOS tasks (ADR-007):
  *   - task_fast (Core 1): Configurable Hz module pipeline (input → process → output)
- *   - task_slow (Core 0): HW monitoring, DBG.loop(), CLI, WDT, sub-task management
+ *   - task_slow (Core 0): HW monitoring, DBG.loop(), CLI, WDT,
+ *                        SD flush, NTRIP connect/reconnect, ETH monitoring
  *
- * Sub-tasks (Core 0, spawned by modules/task_slow):
- *   - maintTask: SD flush, NTRIP connect/reconnect (blocking I/O)
+ * Operating Modes (OpMode): CONFIG and WORK.
+ *   - CONFIG: Safety LOW — configuration mode, pipeline paused
+ *   - WORK:   Safety HIGH — autosteer operation, pipeline active
  *
  * NOTE: Hardware init is done in setup() via hal_esp32_init_all().
  *       Tasks do NOT re-initialize anything.
@@ -257,9 +259,9 @@ static void bootMaintRunCliSession(void) {
                 s_boot_eth_url_logged = true;
             }
         }
-        // NOTE: NTRIP tick/read/forward is handled by maintTask (sdLoggerMaintInit).
+        // NOTE: NTRIP tick/read/forward is handled by task_slow.
         // Do NOT call ntripTick() here — it blocks up to 5 s in hal_tcp_connect()
-        // and would starve the IDLE task / trigger WDT when maintTask runs concurrently.
+        // and would starve the IDLE task / trigger WDT.
         um980SetupConsoleTick();
         delay(10);
     }
@@ -708,42 +710,29 @@ static void bootInitControl(void) {
 // Boot Phase 7: Start FreeRTOS Tasks (ADR-007)
 //
 // Erstellt: task_fast (Core 1), task_slow (Core 0)
-// NOTE: Sub-tasks (e.g. maintTask for NTRIP/SD) are created by modules
-//       or by task_slow at runtime.
+// NOTE: SD/NTRIP/ETH are handled directly by task_slow (no sub-tasks).
+//       PSRAM buffer allocation happens during module activation
+//       (mod_logging.activate() calls sdLoggerInitPsram()).
 // ===================================================================
 static void bootStartTasks(void) {
     // -----------------------------------------------------------------
-    // Sub-task: Maintenance Task (TASK-029)
+    // PSRAM buffer allocation (TASK-029)
     // -----------------------------------------------------------------
-    // WICHTIG (TASK-045): Der maintTask MUSS erstellt werden wenn NTRIP
-    // aktiv ist, da ntripTick() blocking TCP-Connect enthaelt (5s Timeout).
-    // mod_logging.activate() already calls sdLoggerMaintInit() if SD is
-    // detected.  But if only NTRIP is active (no SD), we must start it here.
-    // This is a sub-task managed by task_slow (Core 0).
+    // mod_logging.activate() already calls sdLoggerMaintInit() ->
+    // sdLoggerInitPsram() if SD is detected.  If only NTRIP is active
+    // (no SD), we still need to ensure PSRAM is initialised for the
+    // ring buffer.  sdLoggerInitPsram() is idempotent (Issue 3 guard).
     // -----------------------------------------------------------------
     const bool logging_active = moduleSysIsActive(ModuleId::LOGGING);
     const auto* log_mod = moduleSysGet(ModuleId::LOGGING);
     const bool sd_detected = logging_active && log_mod && log_mod->state.detected;
-    const bool ntrip_active = moduleSysIsActive(ModuleId::NTRIP);
 
-    if (!sd_detected && ntrip_active) {
-        // NTRIP active but no SD — maintTask needed for ntripTick()
-        // Phase 2: Use maintTaskStart() with duplicate guard
-        if (!maintTaskStart()) {
-            hal_log("Main: maintTask already running or creation failed");
-        }
-    } else if (sd_detected) {
-        // LOGGING module already called sdLoggerMaintInit() -> maintTaskStart()
-        // during activation. Verify it's running:
-        if (maintTaskIsRunning()) {
-            hal_log("Main: maintTask already started by LOGGING module (sub-task)");
-        } else {
-            hal_log("Main: maintTask NOT running despite LOGGING active — starting");
-            maintTaskStart();
-        }
-    } else {
-        hal_log("Main: maintTask not started (LOGGING and NTRIP inactive)");
+    if (!sd_detected) {
+        // No SD detected — ensure PSRAM buffer is still allocated for
+        // the ring buffer (used by NTRIP and SD logging).
+        sdLoggerInitPsram();
     }
+    // else: LOGGING module already called sdLoggerInitPsram() during activation.
 
     // Startup-Errors melden (UDP wenn Netz up, sonst Serial)
     hal_delay_ms(100);
@@ -872,14 +861,17 @@ static void taskFastFunc(void* param) {
 // ===================================================================
 // task_slow – background services on Core 0 (ADR-007)
 //
-// Absorbs former commTask + loop() responsibilities:
+// Absorbs former commTask + loop() + maintTask responsibilities:
 //   - HW status monitoring (~1 Hz)
 //   - DBG.loop() for TCP console
 //   - Serial/TCP CLI polling
 //   - Setup Wizard (CONFIG mode only)
 //   - Periodic telemetry (5s)
 //   - Watchdog feed
-//   - Sub-task lifecycle management (maintTask etc.)
+//   - SD card flush (every 2 s via sdLoggerTick())
+//   - NTRIP state machine tick (every 1 s via ntripTick())
+//   - ETH link monitoring (every 1 s via sdLoggerEthMonitor())
+//   - GPIO mode-toggle polling (CONFIG <-> WORK)
 //
 // May block on I/O (TCP, SD). Core 0 is exclusively for slow path.
 // ===================================================================
@@ -903,6 +895,12 @@ static void taskSlowFunc(void* param) {
     static uint32_t s_last_safety_change_ms = 0;
     static constexpr uint32_t MODE_TOGGLE_DEBOUNCE_MS = 500;
     static bool s_mode_toggle_initialized = false;
+
+    // SD/NTRIP/ETH interval timers (task_slow integration)
+    static const uint32_t SD_FLUSH_INTERVAL_MS = 2000;
+    static const uint32_t NTRIP_TICK_INTERVAL_MS = 1000;
+    uint32_t last_sd_flush_ms = 0;
+    uint32_t last_ntrip_tick_ms = 0;
 
     // CLI input buffer (moved from loopCli)
     static char s_cli_buf[128];
@@ -998,8 +996,6 @@ static void taskSlowFunc(void* param) {
                     // Safety HIGH + current CONFIG -> try WORK
                     if (modeSet(OpMode::WORK)) {
                         hal_log("SLOW: GPIO mode-toggle -> WORK (safety HIGH)");
-                        // Phase 2: Start maintTask when entering WORK mode
-                        maintTaskStart();
                     } else {
                         hal_log("SLOW: GPIO mode-toggle -> WORK rejected (pipeline incomplete)");
                     }
@@ -1007,8 +1003,13 @@ static void taskSlowFunc(void* param) {
                     // Safety LOW + current WORK -> CONFIG
                     modeSet(OpMode::CONFIG);
                     hal_log("SLOW: GPIO mode-toggle -> CONFIG (safety LOW)");
-                    // Phase 2: Stop maintTask when entering CONFIG mode
-                    maintTaskStop();
+                    // Disconnect NTRIP TCP if connected
+#if FEAT_ENABLED(FEAT_COMPILED_NTRIP)
+                    if (hal_tcp_connected()) {
+                        hal_log("SLOW: NTRIP disconnect (mode -> CONFIG)");
+                        hal_tcp_disconnect();
+                    }
+#endif
                 }
             }
         }
@@ -1106,6 +1107,38 @@ static void taskSlowFunc(void* param) {
                 s_cli_buf[s_cli_len++] = static_cast<char>(ch);
                 DBG.print(static_cast<char>(ch));
             }
+        }
+
+        // --- ETH link monitoring (every ~1 s) ---
+        sdLoggerEthMonitor();
+
+        // --- NTRIP state machine tick (every 1 s, WORK mode + ETH only) ---
+#if FEAT_ENABLED(FEAT_COMPILED_NTRIP)
+        if (now - last_ntrip_tick_ms >= NTRIP_TICK_INTERVAL_MS) {
+            last_ntrip_tick_ms = now;
+            if (modeGet() == OpMode::WORK) {
+                if (!hal_net_is_connected()) {
+                    if (hal_tcp_connected()) {
+                        hal_log("SLOW: NTRIP disconnect (ETH link down)");
+                        hal_tcp_disconnect();
+                    }
+                } else {
+                    ntripTick();
+                }
+            } else {
+                // CONFIG mode — do not attempt NTRIP connections.
+                if (hal_tcp_connected()) {
+                    hal_log("SLOW: NTRIP disconnect (not in WORK mode)");
+                    hal_tcp_disconnect();
+                }
+            }
+        }
+#endif
+
+        // --- SD card flush (every 2 s) ---
+        if (now - last_sd_flush_ms >= SD_FLUSH_INTERVAL_MS) {
+            last_sd_flush_ms = now;
+            sdLoggerTick();
         }
 
         // --- UM980 console tick ---
