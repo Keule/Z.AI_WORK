@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useTheme } from 'next-themes'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -13,7 +13,8 @@ import {
   Search, Filter, X, Archive, Bug, ClipboardList,
   MemoryStick, Microchip, LayoutDashboard, Package,
   ListTodo, FolderDown, CircuitBoard, Database, ArrowDown, ArrowUp,
-  Fingerprint, HardDrive, RadioTower, EthernetPort
+  Fingerprint, HardDrive, RadioTower, EthernetPort,
+  Sparkles, Copy, ClipboardCopy, Eye, Trash2, Send
 } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardAction } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -26,6 +27,33 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Table, TableHeader, TableBody, TableHead, TableRow, TableCell
 } from '@/components/ui/table'
+
+// ─── AI REQUEST TYPES ──────────────────────────────────────────────────────────
+
+type AIRequestType = 'issue_request' | 'adr_request' | 'design_request' | 'task_request'
+type AIContextType = 'module' | 'backlog_task' | 'architecture'
+
+interface AIRequestDraft {
+  id: string
+  type: AIRequestType
+  contextType: AIContextType
+  contextId: string
+  contextLabel: string
+  userNote: string
+  createdAt: string
+  markdown: string
+}
+
+interface AIRequestGeneratorState {
+  type: AIRequestType
+  contextType: AIContextType
+  contextId: string
+  contextLabel: string
+  userNote: string
+}
+
+// Global event-based communication between tabs
+let pendingAIRequest: { contextType: AIContextType; contextId: string; contextLabel: string } | null = null
 
 // ─── DATA ─────────────────────────────────────────────────────────────────────
 
@@ -175,6 +203,20 @@ const STATUS_BADGE: Record<TaskStatus, { className: string; icon: React.ReactNod
   Geplant: { className: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300 border-sky-200 dark:border-sky-800', icon: <ClipboardList className="size-3" /> },
 }
 
+const AI_REQUEST_TYPES: { value: AIRequestType; label: string; description: string }[] = [
+  { value: 'issue_request', label: 'Issue Request', description: 'Problem, Lösung, Acceptance Criteria' },
+  { value: 'adr_request', label: 'ADR Request', description: 'Architektur-Entscheidung dokumentieren' },
+  { value: 'design_request', label: 'Design Request', description: 'UI/UX, Datenmodell, Dateistruktur' },
+  { value: 'task_request', label: 'Task Request', description: 'Implementierungsaufgabe planen' },
+]
+
+const AI_REQUEST_TYPE_OUTPUTS: Record<AIRequestType, string[]> = {
+  issue_request: ['GitHub Issue Titel', 'Problemstellung', 'Vorgeschlagene Lösung', 'Betroffene Module/Dateien', 'Akzeptanzkriterien', 'Test-Strategie', 'Risiken', 'Implementierungsschritte'],
+  adr_request: ['ADR Titel', 'Entscheidungskontext', 'Betrachtete Optionen', 'Trade-offs', 'Empfohlene Entscheidung', 'Konsequenzen', 'Follow-up Tasks'],
+  design_request: ['Design-Zusammenfassung', 'User Flow', 'UI/Komponenten', 'Datenmodell', 'Datei-/Ordnerstruktur', 'Risiken', 'Implementierungsaufgaben'],
+  task_request: ['Task Titel', 'Ziel', 'Nicht-Ziele', 'Wahrscheinlich betroffene Dateien/Module', 'Implementierungsschritte', 'Akzeptanzkriterien', 'Test-Kommandos', 'Merge-Konflikt-Risiken'],
+}
+
 // ─── GLOBE ICON FIX ───────────────────────────────────────────────────────────
 
 function Globe(props: React.SVGProps<SVGSVGElement> & { className?: string }) {
@@ -188,6 +230,157 @@ function Globe(props: React.SVGProps<SVGSVGElement> & { className?: string }) {
 }
 
 // ─── COMPONENTS ───────────────────────────────────────────────────────────────
+
+function generateAIRequestMarkdown(state: AIRequestGeneratorState): string {
+  const today = new Date().toISOString().split('T')[0]
+  const isoNow = new Date().toISOString()
+  const contextSlug = state.contextId.toLowerCase().replace(/[^a-z0-9]+/g, '_')
+  const typeSlug = state.type.replace('_request', '')
+  const autoId = `AI-${today.replace(/-/g, '')}-${typeSlug}-${contextSlug}`
+
+  // Build context section based on contextType
+  let contextSection = ''
+  if (state.contextType === 'module') {
+    const mod = MODULES.find(m => m.id === state.contextId)
+    if (mod) {
+      const relatedTasks = BACKLOG_TASKS.filter(t => {
+        const title = t.title.toLowerCase()
+        return title.includes(mod.id.toLowerCase()) || title.includes(mod.fullName.toLowerCase()) || title.includes(mod.name.toLowerCase())
+      })
+      contextSection = `### Modul: ${mod.name} (${mod.fullName})
+
+| Feld | Wert |
+|------|------|
+| **ID** | ${mod.id} |
+| **Kategorie** | ${mod.category} |
+| **Status** | ${mod.status} |
+| **Freshness** | ${mod.freshness} ms |
+| **Beschreibung** | ${mod.description} |
+| **Abhängigkeiten** | ${mod.deps.length > 0 ? mod.deps.join(', ') : 'Keine'} |`
+      if (relatedTasks.length > 0) {
+        contextSection += `\n\n#### Zugehörige Backlog-Tasks\n${relatedTasks.map(t => `- **${t.id}**: ${t.title} (${t.status})`).join('\n')}`
+      }
+    }
+  } else if (state.contextType === 'backlog_task') {
+    const task = BACKLOG_TASKS.find(t => t.id === state.contextId)
+    if (task) {
+      contextSection = `### Backlog-Task: ${task.id}
+
+| Feld | Wert |
+|------|------|
+| **Titel** | ${task.title} |
+| **Epic** | ${task.epic} — ${task.epicName} |
+| **Priorität** | ${task.priority} |
+| **Status** | ${task.status} |`
+    }
+  } else if (state.contextType === 'architecture') {
+    contextSection = `### Architekturkontext
+
+Zwei-Task-Architektur (ADR-007):
+- **task_fast** (Core 1, 100 Hz): GNSS → IMU → WAS → STEER → ACTUATOR
+- **task_slow** (Core 0, Event): NTRIP, ETH Monitor, SD Flush, WDT, SharedSlot RTCM, CLI
+- **Betriebsmodi**: CONFIG ↔ WORK (Safety-Pin gesteuert)
+- **15 aktive Module** in 5 Kategorien`
+  }
+
+  const userNoteSection = state.userNote.trim()
+    ? `\n## User Note\n\n${state.userNote.trim()}\n`
+    : '\n## User Note\n\n_(keine Notiz angegeben)_\n'
+
+  return `---
+id: "${autoId}"
+type: "${state.type}"
+source: "dashboard"
+context_type: "${state.contextType}"
+context_id: "${state.contextId}"
+status: "open"
+priority: "normal"
+created_at: "${isoNow}"
+target_agent: "planning_agent"
+repo: "Keule/Z.AI_WORK"
+previous_repo: "Keule/ESP32_AGO_GNSS"
+repo_context_required: true
+---
+
+# AI Request: ${AI_REQUEST_TYPES.find(t => t.value === state.type)?.label}
+
+## Instruction
+
+You are an AI planning/software architecture agent working on the repository \`Keule/Z.AI_WORK\`.
+
+This request was generated by the local project dashboard.
+It does not represent a direct AI call.
+The selected dashboard context is attached below and should be treated as authoritative.
+
+The predecessor repository is \`Keule/ESP32_AGO_GNSS\`.
+Use that relationship when historical context is relevant.
+
+## Requested Output
+
+${AI_REQUEST_TYPE_OUTPUTS[state.type].map((item, i) => `${i + 1}. ${item}`).join('\n')}
+
+## Selected Context
+
+${contextSection}
+${userNoteSection}
+---
+_Generated by Z.AI ESP32 Dashboard — ${new Date().toLocaleString('de-DE')}_
+_Target: \`ai/requests/${state.type.replace('_request', 's')}/${today}_${contextSlug}.md\`_
+`
+}
+
+function generateBatchMarkdown(requests: AIRequestDraft[]): string {
+  const isoNow = new Date().toISOString()
+  const today = isoNow.split('T')[0]
+  const items = requests.map(r => `### ${r.id} — ${r.contextLabel}\n- Typ: ${AI_REQUEST_TYPES.find(t => t.value === r.type)?.label}\n- Kontext: ${r.contextType} (${r.contextId})`).join('\n\n')
+  return `---
+id: "BATCH-${today}"
+type: "batch_request"
+source: "dashboard"
+status: "open"
+created_at: "${isoNow}"
+target_agent: "planning_agent"
+repo: "Keule/Z.AI_WORK"
+---
+
+# AI Batch Request
+
+## Instruction
+
+You are an AI planning agent. Analyze the following ${requests.length} collected requests from the Z.AI_WORK dashboard.
+
+For each request, provide your analysis. Then identify:
+1. Overlapping concerns between requests
+2. Dependencies between requests
+3. Recommended implementation order
+4. Consolidated action items
+
+## Collected Requests
+
+${items}
+---
+_Generated by Z.AI ESP32 Dashboard — Batch of ${requests.length} requests_
+`
+}
+
+function downloadMarkdown(content: string, filename: string) {
+  const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    return false
+  }
+}
 
 function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme()
@@ -552,6 +745,25 @@ function ModuleTab() {
                             {mod.status}
                           </Badge>
                         </div>
+                        <div className="pt-2 border-t mt-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full text-xs gap-1.5"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              pendingAIRequest = {
+                                contextType: 'module',
+                                contextId: mod.id,
+                                contextLabel: `${mod.name} (${mod.fullName})`,
+                              }
+                              window.dispatchEvent(new CustomEvent('ai-request-trigger'))
+                            }}
+                          >
+                            <Sparkles className="size-3" />
+                            AI Request
+                          </Button>
+                        </div>
                       </CardContent>
                     </motion.div>
                   )}
@@ -725,6 +937,7 @@ function BacklogTab() {
                 <TableHead className="w-[140px] hidden md:table-cell text-xs font-semibold">Epic</TableHead>
                 <TableHead className="w-[90px] text-xs font-semibold">Priorität</TableHead>
                 <TableHead className="w-[90px] text-xs font-semibold">Status</TableHead>
+                <TableHead className="w-[40px] text-xs font-semibold"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -754,6 +967,20 @@ function BacklogTab() {
                       {task.status}
                     </Badge>
                   </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="size-7 text-xs gap-1"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        pendingAIRequest = { contextType: 'backlog_task', contextId: task.id, contextLabel: `${task.id}: ${task.title}` }
+                        window.dispatchEvent(new CustomEvent('ai-request-trigger'))
+                      }}
+                    >
+                      <Sparkles className="size-3" />
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -772,6 +999,331 @@ function BacklogTab() {
             TASK-001 bis TASK-047 · {BACKLOG_TASKS.filter(t => t.status === 'Erledigt').length}/{BACKLOG_TASKS.length} erledigt
           </span>
         </div>
+      </Card>
+    </div>
+  )
+}
+
+// ─── AI REQUEST TAB ───────────────────────────────────────────────────────────
+
+function AIRequestTab() {
+  const [generator, setGenerator] = useState<AIRequestGeneratorState>({
+    type: 'issue_request',
+    contextType: 'module',
+    contextId: '',
+    contextLabel: '',
+    userNote: '',
+  })
+  const [previewMarkdown, setPreviewMarkdown] = useState('')
+  const [collectedRequests, setCollectedRequests] = useState<AIRequestDraft[]>([])
+  const [batchMarkdown, setBatchMarkdown] = useState('')
+  const [copied, setCopied] = useState(false)
+
+  // Listen for cross-tab triggers
+  useEffect(() => {
+    const handler = () => {
+      if (pendingAIRequest) {
+        setGenerator(prev => ({
+          ...prev,
+          contextType: pendingAIRequest!.contextType,
+          contextId: pendingAIRequest!.contextId,
+          contextLabel: pendingAIRequest!.contextLabel,
+        }))
+        pendingAIRequest = null
+      }
+    }
+    window.addEventListener('ai-request-trigger', handler)
+    return () => window.removeEventListener('ai-request-trigger', handler)
+  }, [])
+
+  const handleGenerate = () => {
+    const md = generateAIRequestMarkdown(generator)
+    setPreviewMarkdown(md)
+  }
+
+  const handleCopy = async () => {
+    const text = previewMarkdown || batchMarkdown
+    if (!text) return
+    const ok = await copyToClipboard(text)
+    if (ok) {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }
+
+  const handleDownload = () => {
+    const text = previewMarkdown || batchMarkdown
+    if (!text) return
+    const today = new Date().toISOString().split('T')[0]
+    const contextSlug = generator.contextId.toLowerCase().replace(/[^a-z0-9]+/g, '_') || 'general'
+    const typeSlug = generator.type.replace('_request', '')
+    const filename = batchMarkdown
+      ? `batch_${today}_ai_requests.md`
+      : `${today}_${contextSlug}_${typeSlug}_request.md`
+    downloadMarkdown(text, filename)
+  }
+
+  const handleAddToBatch = () => {
+    if (!previewMarkdown) return
+    const today = new Date().toISOString().split('T')[0]
+    const contextSlug = generator.contextId.toLowerCase().replace(/[^a-z0-9]+/g, '_') || 'general'
+    const typeSlug = generator.type.replace('_request', '')
+    const draft: AIRequestDraft = {
+      id: `AI-${today.replace(/-/g, '')}-${typeSlug}-${contextSlug}`,
+      type: generator.type,
+      contextType: generator.contextType,
+      contextId: generator.contextId,
+      contextLabel: generator.contextLabel || `${generator.contextType}: ${generator.contextId}`,
+      userNote: generator.userNote,
+      createdAt: new Date().toISOString(),
+      markdown: previewMarkdown,
+    }
+    setCollectedRequests(prev => [...prev, draft])
+    setPreviewMarkdown('')
+  }
+
+  const handleRemoveFromBatch = (index: number) => {
+    setCollectedRequests(prev => prev.filter((_, i) => i !== index))
+    setBatchMarkdown('')
+  }
+
+  const handleGenerateBatch = () => {
+    if (collectedRequests.length === 0) return
+    const md = generateBatchMarkdown(collectedRequests)
+    setBatchMarkdown(md)
+    setPreviewMarkdown('')
+  }
+
+  const contextOptions = useMemo(() => {
+    if (generator.contextType === 'module') {
+      return MODULES.map(m => ({ value: m.id, label: `${m.name} (${m.fullName})` }))
+    } else if (generator.contextType === 'backlog_task') {
+      return BACKLOG_TASKS.map(t => ({ value: t.id, label: `${t.id}: ${t.title}` }))
+    }
+    return []
+  }, [generator.contextType])
+
+  const handleContextSelect = (value: string) => {
+    const option = contextOptions.find(o => o.value === value)
+    setGenerator(prev => ({
+      ...prev,
+      contextId: value,
+      contextLabel: option?.label || '',
+    }))
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Generator Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Sparkles className="size-4 text-amber-500" />
+            Neuen Request erstellen
+          </CardTitle>
+          <CardDescription>
+            Erstelle strukturierte AI-Requests mit Dashboard-Kontext
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Request Type Selection */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-2 block">Request-Typ</label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {AI_REQUEST_TYPES.map(rt => (
+                <Button
+                  key={rt.value}
+                  variant={generator.type === rt.value ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-auto py-2 px-3 flex flex-col items-start gap-0.5 text-left"
+                  onClick={() => setGenerator(prev => ({ ...prev, type: rt.value }))}
+                >
+                  <span className="text-xs font-medium">{rt.label}</span>
+                  <span className="text-[10px] text-muted-foreground leading-tight">{rt.description}</span>
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Context Selection */}
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Kontext-Typ</label>
+              <div className="flex gap-1">
+                {[
+                  { value: 'module' as AIContextType, label: 'Modul' },
+                  { value: 'backlog_task' as AIContextType, label: 'Backlog Task' },
+                  { value: 'architecture' as AIContextType, label: 'Architektur' },
+                ].map(ct => (
+                  <Button
+                    key={ct.value}
+                    variant={generator.contextType === ct.value ? 'default' : 'outline'}
+                    size="sm"
+                    className="text-xs flex-1"
+                    onClick={() => setGenerator(prev => ({
+                      ...prev,
+                      contextType: ct.value,
+                      contextId: ct.value === 'architecture' ? 'global' : '',
+                      contextLabel: ct.value === 'architecture' ? 'Gesamte Architektur' : '',
+                    }))}
+                  >
+                    {ct.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            {generator.contextType !== 'architecture' && (
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                  {generator.contextType === 'module' ? 'Modul wählen' : 'Task wählen'}
+                </label>
+                <select
+                  className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  value={generator.contextId}
+                  onChange={(e) => handleContextSelect(e.target.value)}
+                >
+                  <option value="">— Bitte wählen —</option>
+                  {contextOptions.map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
+          {/* User Note */}
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1.5 block">User Note (optional)</label>
+            <textarea
+              className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y"
+              placeholder="Zusätzliche Hinweise, Anforderungen oder Randbedingungen..."
+              value={generator.userNote}
+              onChange={(e) => setGenerator(prev => ({ ...prev, userNote: e.target.value }))}
+            />
+          </div>
+
+          {/* Generate Button */}
+          <div className="flex gap-2">
+            <Button onClick={handleGenerate} className="gap-1.5">
+              <Send className="size-3.5" />
+              Markdown erzeugen
+            </Button>
+            {previewMarkdown && (
+              <>
+                <Button variant="outline" size="sm" onClick={handleCopy} className="gap-1.5">
+                  {copied ? <CheckCircle className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
+                  {copied ? 'Kopiert!' : 'Kopieren'}
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleDownload} className="gap-1.5">
+                  <Download className="size-3.5" />
+                  Herunterladen
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleAddToBatch} className="gap-1.5">
+                  <ClipboardList className="size-3.5" />
+                  Zum Batch
+                </Button>
+              </>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Preview */}
+      {previewMarkdown && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Eye className="size-4 text-muted-foreground" />
+              Markdown-Vorschau
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="h-[400px] w-full rounded-md border">
+              <pre className="p-4 text-xs font-mono whitespace-pre-wrap break-words leading-relaxed">
+                {previewMarkdown}
+              </pre>
+            </ScrollArea>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Batch Section */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <ClipboardCopy className="size-4 text-muted-foreground" />
+                Gesammelte Requests (Batch)
+              </CardTitle>
+              <CardDescription className="mt-1">
+                {collectedRequests.length === 0
+                  ? 'Sammle mehrere Requests und erzeuge eine kombinierte Batch-Analyse'
+                  : `${collectedRequests.length} Request(s) gesammelt`}
+              </CardDescription>
+            </div>
+            {collectedRequests.length > 0 && (
+              <div className="flex gap-2">
+                <Button size="sm" onClick={handleGenerateBatch} className="gap-1.5">
+                  <Sparkles className="size-3.5" />
+                  Batch erzeugen
+                </Button>
+                {batchMarkdown && (
+                  <>
+                    <Button variant="outline" size="sm" onClick={handleCopy} className="gap-1.5">
+                      {copied ? <CheckCircle className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
+                      {copied ? 'Kopiert!' : 'Kopieren'}
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleDownload} className="gap-1.5">
+                      <Download className="size-3.5" />
+                      Download
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </CardHeader>
+        {collectedRequests.length > 0 && (
+          <CardContent>
+            <div className="space-y-2">
+              {collectedRequests.map((r, i) => (
+                <div key={`${r.id}-${i}`} className="flex items-center justify-between rounded-md border px-3 py-2 gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <code className="text-xs font-mono text-muted-foreground">{r.id}</code>
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                        {AI_REQUEST_TYPES.find(t => t.value === r.type)?.label}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5 truncate">{r.contextLabel}</p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="size-7 shrink-0 text-muted-foreground hover:text-destructive"
+                    onClick={() => handleRemoveFromBatch(i)}
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        )}
+
+        {batchMarkdown && (
+          <CardContent className="pt-0">
+            <ScrollArea className="h-[350px] w-full rounded-md border">
+              <pre className="p-4 text-xs font-mono whitespace-pre-wrap break-words leading-relaxed">
+                {batchMarkdown}
+              </pre>
+            </ScrollArea>
+          </CardContent>
+        )}
       </Card>
     </div>
   )
@@ -1521,6 +2073,10 @@ export default function Home() {
               <span className="hidden sm:inline">Architektur</span>
               <span className="sm:hidden">Arch.</span>
             </TabsTrigger>
+            <TabsTrigger value="ai" className="gap-1.5">
+              <Sparkles className="size-3.5" />
+              AI Requests
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="uebersicht">
@@ -1541,6 +2097,10 @@ export default function Home() {
 
           <TabsContent value="architektur">
             <ArchitectureTab />
+          </TabsContent>
+
+          <TabsContent value="ai">
+            <AIRequestTab />
           </TabsContent>
         </Tabs>
       </main>

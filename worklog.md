@@ -149,3 +149,30 @@
 - **Duplicate guard**: `maintTaskStart()` checks `s_maint_task_handle != nullptr` before creating a task. This allows multiple callers (mod_logging.activate, bootStartTasks, task_slow) to safely request task start without risking duplicate tasks.
 - **Graceful exit**: `maintTaskStop()` sets a flag and polls for the task to self-delete. The task checks the flag at the TOP of each loop iteration (before vTaskDelay), then performs cleanup (close SD, disconnect NTRIP) and calls `vTaskDelete(nullptr)`.
 - **ETH dependency**: NTRIP connections are now aborted when `hal_net_is_connected()` returns false, preventing wasteful TCP connect attempts when the Ethernet link is down.
+
+---
+Task ID: 2
+Agent: Fullstack Developer
+Task: Implement AI Request Collector in ESP32 Dashboard
+
+Work Log:
+- Read existing page.tsx (1571 lines) to understand structure
+- Added AI request types (AIRequestType, AIContextType) and interfaces (AIRequestDraft, AIRequestGeneratorState)
+- Added `useEffect` to React imports; added Sparkles, Copy, ClipboardCopy, Eye, Trash2, Send to lucide-react imports
+- Added global `pendingAIRequest` variable for cross-tab communication via CustomEvent
+- Added AI_REQUEST_TYPES and AI_REQUEST_TYPE_OUTPUTS constants after STATUS_BADGE
+- Implemented generateAIRequestMarkdown() with full YAML frontmatter, instruction, requested output, context, and user note
+- Implemented generateBatchMarkdown() for multi-request batch analysis
+- Added utility functions: downloadMarkdown() and copyToClipboard()
+- Created AIRequestTab component with form (type selector, context type/source, user note), preview, copy, download, batch collector
+- Added AI Request button to Module cards (expanded view) — sets pendingAIRequest and dispatches custom event
+- Added AI Request button (6th column) to Backlog task table rows
+- Added "AI Requests" tab trigger and content to main Home component
+- Verified with `bun run lint` — zero errors
+
+Stage Summary:
+- AI Request Collector fully implemented in page.tsx (no new files)
+- 4 request types: issue, adr, design, task — each with specific output fields
+- Context auto-populated from modules and backlog tasks via custom event
+- Batch collector for multi-request analysis with combined markdown generation
+- All lint checks pass
